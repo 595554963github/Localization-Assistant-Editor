@@ -555,9 +555,10 @@ class BinaryEditorApp:
             return '.' * (dot_count // 2)   
         cleaned = re.sub(r'[\n\r\t]', '', text)
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-        cleaned = re.sub(r'([a-zA-Z0-9])\.(\s*[a-zA-Z0-9])', r'\1\2', cleaned)
         cleaned = re.sub(r'\.{6,}', replace_long_dots, cleaned)
-        cleaned = re.sub(r'(?<!\.)\.(?!\.)', '', cleaned)
+        cleaned = re.sub(r'\.\.\.', '.', cleaned)
+        cleaned = re.sub(r'([a-zA-Z0-9])\.(\s*[a-zA-Z0-9])', r'\1\2', cleaned)
+        cleaned = re.sub(r'(?<!\.)\.(?!\.|$)', '', cleaned)
         return cleaned
     
     def show_encoding_converter(self):
@@ -2408,3 +2409,4 @@ if __name__ == "__main__":
         print("警告:tkinterdnd2未安装，拖拽功能将不可用")
     app = BinaryEditorApp(root)
     root.mainloop()
+

@@ -1,4 +1,4 @@
-﻿import tkinter as tk
+import tkinter as tk
 from tkinter import filedialog, ttk, messagebox
 import os
 import re
@@ -274,14 +274,78 @@ class BinaryEditorApp:
     def find_all_text_segments(self, min_length=2):
         segments = []
         current_pos = 0
+        data_length = len(self.file_data)
+        encoding = self.encoding_var.get()
     
-        while current_pos < len(self.file_data):
-            segment = self.find_next_text_segment(current_pos, len(self.file_data)-1, min_length)
-            if not segment:
-                break
-        
-            segments.append(segment)
-            current_pos = segment["end"] + 1
+        if encoding in ['utf-8', 'gbk']:
+            while current_pos < data_length:
+                while (current_pos < data_length and 
+                       not (32 <= self.file_data[current_pos] <= 126 or 
+                            self.file_data[current_pos] >= 0x80)):
+                    current_pos += 1
+            
+                if current_pos >= data_length:
+                    break
+                
+                segment_start = current_pos
+                segment_bytes = bytearray()
+            
+                while (current_pos < data_length and 
+                       (32 <= self.file_data[current_pos] <= 126 or 
+                        self.file_data[current_pos] >= 0x80)):
+                    segment_bytes.append(self.file_data[current_pos])
+                    current_pos += 1
+            
+                if len(segment_bytes) >= min_length:
+                    try:
+                        segment_text = segment_bytes.decode(encoding)
+                        segments.append({
+                            "start": segment_start,
+                            "end": current_pos - 1,
+                            "length": len(segment_bytes),
+                            "text": segment_text,
+                            "bytes": segment_bytes
+                        })
+                    except UnicodeDecodeError:
+                        pass
+                    
+        elif encoding in ['utf-16le', 'utf-16be']:
+            while current_pos < data_length - 1:
+                valid_chars_found = 0
+                segment_start = current_pos
+                segment_bytes = bytearray()
+            
+                while current_pos < data_length - 1:
+                    byte1 = self.file_data[current_pos]
+                    byte2 = self.file_data[current_pos + 1]
+                
+                    is_valid = False
+                    if encoding == 'utf-16le':
+                        is_valid = (byte1 == 0 and 32 <= byte2 <= 126) or (byte2 == 0 and 32 <= byte1 <= 126)
+                    else:
+                        is_valid = (byte2 == 0 and 32 <= byte1 <= 126) or (byte1 == 0 and 32 <= byte2 <= 126)
+                
+                    if is_valid:
+                        segment_bytes.extend([byte1, byte2])
+                        current_pos += 2
+                        valid_chars_found += 1
+                    else:
+                        break
+            
+                if valid_chars_found >= min_length:
+                    try:
+                        segment_text = segment_bytes.decode(encoding)
+                        segments.append({
+                            "start": segment_start,
+                            "end": current_pos - 1,
+                            "length": len(segment_bytes),
+                            "text": segment_text,
+                            "bytes": segment_bytes
+                        })
+                    except UnicodeDecodeError:
+                        pass
+                else:
+                    current_pos += 1
     
         return segments
 
@@ -432,7 +496,67 @@ class BinaryEditorApp:
         
         except Exception:
             return False
+    
+    def show_clipboard_converter(self):
+        converter_window = tk.Toplevel(self.root)
+        converter_window.title("剪贴板字符串转换器")
+        converter_window.geometry("600x500")
+        converter_window.minsize(500, 300)
 
+        main_frame = ttk.Frame(converter_window, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        input_frame = ttk.LabelFrame(main_frame, text="输入字符串")
+        input_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(input_frame, text="输入UTF16格式文本（自动转换为正常文本）:").pack(anchor=tk.W, padx=5, pady=5)
+
+        input_text = tk.Text(input_frame, height=4, wrap=tk.WORD)
+        input_text.pack(fill=tk.X, padx=5, pady=5)
+
+        result_frame = ttk.LabelFrame(main_frame, text="转换结果")
+        result_frame.pack(fill=tk.BOTH, expand=True)
+
+        result_text = tk.Text(result_frame, height=10, wrap=tk.WORD)
+        result_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+
+        def update_conversion():
+            input_str = input_text.get("1.0", tk.END).strip()
+            if not input_str:
+                result_text.delete("1.0", tk.END)
+                return
+            result = self.convert_utf16_exe_text(input_str)
+            result_text.delete("1.0", tk.END)
+            result_text.insert("1.0", result)
+
+        def copy_result():
+            result = result_text.get("1.0", tk.END).strip()
+            if result:
+                self.root.clipboard_clear()
+                self.root.clipboard_append(result)
+                self.update_status("已复制转换结果到剪贴板")
+
+        def clear_all():
+            input_text.delete("1.0", tk.END)
+            result_text.delete("1.0", tk.END)
+
+        ttk.Button(button_frame, text="清空", command=clear_all).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="关闭", command=converter_window.destroy).pack(side=tk.RIGHT, padx=5)
+
+        input_text.bind("<KeyRelease>", lambda e: update_conversion())
+        input_text.focus_set()
+
+    def convert_utf16_exe_text(self, text):
+        cleaned = re.sub(r'[\n\r\t]', '', text)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        cleaned = re.sub(r'\.{3,}', '###DOT###', cleaned) 
+        cleaned = re.sub(r'\.', '', cleaned) 
+        cleaned = re.sub(r'###DOT###', '.', cleaned)  
+        return cleaned
+    
     def show_encoding_converter(self):
         converter_window = tk.Toplevel(self.root)
         converter_window.title("实时编码转换器")
@@ -664,6 +788,7 @@ class BinaryEditorApp:
         edit_menu.add_command(label="导入ASCII", command=self.import_replace_file, accelerator="F7")
         edit_menu.add_separator()
         edit_menu.add_command(label="实时编码转换器", command=self.show_encoding_converter, accelerator="F8")
+        edit_menu.add_command(label="剪贴板字符串转换器", command=self.show_clipboard_converter, accelerator="F9")
         edit_menu.add_separator()
         menubar.add_cascade(label="选择功能", menu=edit_menu)
 
@@ -684,6 +809,7 @@ class BinaryEditorApp:
         self.root.bind("<F6>", lambda e: self.export_selected_range())
         self.root.bind("<F7>", lambda e: self.import_replace_file())
         self.root.bind("<F8>", lambda e: self.show_encoding_converter())
+        self.root.bind("<F9>", lambda e: self.show_clipboard_converter())
         self.root.bind("<Control-S>", lambda e: self.save_file())
         self.root.bind("<Control-T>", lambda e: self.save_file_as())
         main_frame = ttk.Frame(self.root, padding="10")
@@ -960,10 +1086,10 @@ class BinaryEditorApp:
     def handle_paste(self, event):
         try:
             focused_widget = self.root.focus_get()
-        
+    
             if focused_widget == self.find_text and self.find_text.cget('state') == tk.DISABLED:
                 return "break"
-            
+        
             if focused_widget == self.replace_text and self.replace_text.cget('state') == tk.DISABLED:
                 return "break"
             clipboard_text = self.root.clipboard_get()
@@ -974,29 +1100,21 @@ class BinaryEditorApp:
 
             if (focused_widget == self.find_text and 
                 self.encoding_var.get() in ['utf-16le', 'utf-16be']):
+        
+                cleaned_text = self.convert_utf16_exe_text(clipboard_text)
             
-                cleaned_text = re.sub(r'[\n\r\t]', '', clipboard_text).strip()
-            
-                if re.match(r'^([^\.\n\r\t]+\.)+[^\.\n\r\t]*\.?$', cleaned_text):
-                    final_text = cleaned_text.replace('.', '')
-                    self.input_type_var.set("字符串")
-                    self.find_mode = "text"
-                    self.find_text.config(state=tk.NORMAL)
-                    current_pos = self.find_text.index(tk.INSERT)
-                    self.find_text.insert(current_pos, final_text)
-                    self.validate_input()
-                    self.update_status(f"UTF-16模式：已智能转换'{clipboard_text[:30]}...' -> '{final_text}'")
-                    return "break"
+                self.input_type_var.set("字符串")
+                self.find_mode = "text"
+                self.find_text.config(state=tk.NORMAL)
+                current_pos = self.find_text.index(tk.INSERT)
+                self.find_text.insert(current_pos, cleaned_text)
+                self.validate_input()
             
                 if cleaned_text != clipboard_text:
-                    self.input_type_var.set("字符串")
-                    self.find_mode = "text"
-                    self.find_text.config(state=tk.NORMAL)
-                    current_pos = self.find_text.index(tk.INSERT)
-                    self.find_text.insert(current_pos, cleaned_text)
-                    self.validate_input()
-                    self.update_status(f"UTF-16模式：已清理不可打印字符")
-                    return "break"
+                    self.update_status(f"UTF-16模式：已转换'{clipboard_text[:30]}{'...' if len(clipboard_text) > 30 else ''}' -> '{cleaned_text}'")
+                else:
+                    self.update_status(f"UTF-16模式：已粘贴文本")
+                return "break"
 
             if focused_widget == self.find_text:
                 cleaned_text = re.sub(r'[\n\r\t]', '', clipboard_text).strip()
@@ -1006,19 +1124,19 @@ class BinaryEditorApp:
                 current_pos = self.find_text.index(tk.INSERT)
                 self.find_text.insert(current_pos, cleaned_text)
                 self.validate_input()
-    
+
             elif focused_widget == self.find_hex_entry:
                 self.input_type_var.set("十六进制")
                 self.find_mode = "hex"
-    
+
                 cleaned_text = re.sub(r'[^0-9A-Fa-f]', '', clipboard_text).upper()
                 hex_pairs = [cleaned_text[i:i+2] for i in range(0, len(cleaned_text), 2)]
                 hex_str = ' '.join(hex_pairs)
-    
+
                 current_pos = self.find_hex_entry.index(tk.INSERT)
                 self.find_hex_entry.insert(current_pos, hex_str)
                 self.validate_hex_input()
-    
+
                 try:
                     byte_data = bytes.fromhex(cleaned_text)
                     self.find_text.config(state=tk.NORMAL)
@@ -1030,35 +1148,64 @@ class BinaryEditorApp:
                     current_pos = self.find_text.index(tk.INSERT)
                     self.find_text.insert(current_pos, "无法解码为字符串")
                     self.find_text.config(state=tk.DISABLED)
-                
+            
             elif focused_widget == self.replace_text:
                 cleaned_text = re.sub(r'[\n\r\t ]', '', clipboard_text)
-
                 translation_table = str.maketrans({
                 '（': '(',
                 '）': ')',
                 '：': ':',
                 '；': ';',
-                '“': "'",
-                '”': "'",
+                '「': '"',
+                '」': '"',
+                '『': '"',
+                '』': '"',
+                '《': '<',
+                '》': '>',
+                '【': '[',
+                '】': ']',
+                '、': ',',
+                '，': ',',
+                '。': '.',
+                '．': '.',
+                '‘': "'",
+                '’': "'",
+                '“': '"',
+                '”': '"',
+                '„': '"',
+                '‟': '"',
+                '‹': '<',
+                '›': '>',
+                '«': '"',
+                '»': '"',
                 '？': '?',
-                '！': '!'
-                })
-                cleaned_text = cleaned_text.translate(translation_table)
+                '！': '!',
+                '—': '-',
+                '–': '-',
+                '～': '~',
+                '‧': '.',
+                '§': '§',
+                '€': 'EUR',
+                '£': 'GBP',
+                '¥': 'JPY',
+                '¢': 'c',
+                '°': 'deg'
+            })
+                processed_text = clipboard_text.translate(translation_table)
 
                 current_pos = self.replace_text.index(tk.INSERT)
-                self.replace_text.insert(current_pos, cleaned_text)
+                self.replace_text.insert(current_pos, processed_text)
                 self.validate_replace_input()
 
             elif focused_widget == self.replace_hex_entry:
                 cleaned_text = re.sub(r'[^0-9A-Fa-f]', '', clipboard_text).upper()
                 hex_pairs = [cleaned_text[i:i+2] for i in range(0, len(cleaned_text), 2)]
                 hex_str = ' '.join(hex_pairs)
-        
+    
                 current_pos = self.replace_hex_entry.index(tk.INSERT)
                 self.replace_hex_entry.insert(current_pos, hex_str)
                 self.validate_replace_hex_input()
-        
+    
         except tk.TclError:
             pass
         return "break"
@@ -1239,7 +1386,7 @@ class BinaryEditorApp:
 
     def show_about(self):
         about_text = """汉化辅助编辑器
-版本5.8    [B站偷吃布丁的涅普缇努制作]
+版本5.9    [B站偷吃布丁的涅普缇努制作]
 
 一个简单的二进制文件编辑器
 

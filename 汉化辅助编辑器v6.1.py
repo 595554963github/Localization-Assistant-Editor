@@ -25,7 +25,7 @@ class BinaryEditorApp:
         self.original_data = None
         self.history = []
         self.history_index = 0
-        self.max_history_items = 50
+        self.max_history_items = 0
 
         self.current_matches = []
         self.current_match_index = -1
@@ -1111,7 +1111,7 @@ class BinaryEditorApp:
                 self.validate_input()
         
                 if cleaned_text != clipboard_text:
-                    self.update_status(f"UTF-16模式：已转换'{clipboard_text[:30]}{'...' if len(clipboard_text) > 30 else ''}' -> '{cleaned_text}'")
+                    self.update_status("UTF-16点分隔字符串已转换")
                 else:
                     self.update_status(f"UTF-16模式：已粘贴文本")
                 return "break"
@@ -1366,7 +1366,7 @@ class BinaryEditorApp:
 
     def show_about(self):
         about_text = """汉化辅助编辑器
-版本6.0    [B站偷吃布丁的涅普缇努制作]
+版本6.1    [B站偷吃布丁的涅普缇努制作，第四梦境协助修改]
 
 一个简单的二进制文件编辑器
 
@@ -1401,9 +1401,9 @@ dnspy、UniTranslator这种工具，dnspy是反编译工具，我已经用它汉
 0x14-DC4(设备4) 0x15-NAK(否定) 0x16-SYN(同步) 0x17-ETB(块终)
 0x18-CAN(取消) 0x19-EM(介质终) 0x1A-SUB(替换) 0x1B-ESC(转义)
 0x1C-FS(文件分) 0x1D-GS(组分) 0x1E-RS(记录分) 0x1F-US(单元分)
-0x7F-DEL(删除)  0xB0-°(度)
+0x7F-DEL(删除) 
 
-常见标点符号及对应字节：
+常见标点符号及对应UTF-8字节：
 0x20-空格  0x21-!  0x22-"  0x23-#  0x24-$  0x25-%  0x26-&  0x27-'
 0x28-(     0x29-)  0x2A-*  0x2B-+  0x2C-,  0x2D--  0x2E-.  0x2F-/
 0x3A-:     0x3B-;  0x3C-<  0x3D-=  0x3E->  0x3F-?  0x40-@  0x5B-[
@@ -1806,8 +1806,12 @@ dnspy、UniTranslator这种工具，dnspy是反编译工具，我已经用它汉
         self.results_count_label.config(text="匹配数量:0")
 
     def update_status(self, message):
-        self.status_bar.config(text=message)
-        self.root.update_idletasks()
+        try:
+            if hasattr(self, 'status_bar') and self.status_bar.winfo_exists():
+                self.status_bar.config(text=message)
+                self.status_bar.update_idletasks()
+        except Exception as e:
+            print(f"状态栏更新失败: {e}")
 
     def undo(self):
         if self.history_index <= 0:
@@ -1828,11 +1832,16 @@ dnspy、UniTranslator这种工具，dnspy是反编译工具，我已经用它汉
         self.update_status(f"已重做到状态 {self.history_index + 1}/{len(self.history)}")
 
     def _load_history_state(self):
-        self.file_data = copy.copy(self.history[self.history_index])
-        self.hex_viewer.set_data(self.file_data)
-    
-        self.hex_viewer.update_view()
-        self.root.update_idletasks()
+        if 0 <= self.history_index < len(self.history):
+            self.file_data = copy.copy(self.history[self.history_index])
+            self.hex_viewer.set_data(self.file_data)
+            self.hex_viewer.update_view()
+            
+            self.root.update_idletasks()
+            
+            self.update_status(f"当前状态: {self.history_index + 1}/{len(self.history)}")
+        else:
+            self.update_status("历史状态索引错误")
 
     def save_history_state(self):
         if self.history_index < len(self.history) - 1:
@@ -1841,7 +1850,7 @@ dnspy、UniTranslator这种工具，dnspy是反编译工具，我已经用它汉
         self.history.append(copy.copy(self.file_data))
         self.history_index = len(self.history) - 1
 
-        if len(self.history) > self.max_history_items:
+        if self.max_history_items > 0 and len(self.history) > self.max_history_items:
             self.history.pop(0)
             self.history_index -= 1
 

@@ -751,8 +751,17 @@ class BinaryEditorApp:
             self.replace_buttons_disabled = False
 
     def on_encoding_changed(self, event=None):
+        self.hex_viewer.highlight_start = -1
+        self.hex_viewer.highlight_end = -1   
+        self.clear_matches()
         self.update_display()
+        current_encoding = self.encoding_var.get()
+        if current_encoding in ['utf-16le', 'utf-16be']:
+            self.update_status(f"已切换到{current_encoding}模式，框选状态已重置，粘贴点分隔文本将自动转换")
+        else:
+            self.update_status(f"已切换到{current_encoding}模式，框选状态已重置")
         self.reset_find_mode()
+        self.hex_viewer.update_view()
 
     def reset_find_mode(self):
         self.find_text.delete("1.0", tk.END)
@@ -760,7 +769,14 @@ class BinaryEditorApp:
         self.replace_text.delete("1.0", tk.END)
         self.replace_hex_entry.delete(0, tk.END)
         self.clear_matches()
-        self.update_status("编码/输入类型已切换，查找模式已重置")
+        self.input_type_var.set("字符串")
+        self.find_mode = "text"
+        self.update_input_fields_state()
+        if hasattr(self, 'hex_viewer'):
+            self.hex_viewer.highlight_start = -1
+            self.hex_viewer.highlight_end = -1
+            self.hex_viewer.update_view()
+        self.update_status("编码/输入类型已切换，查找模式和框选状态已重置")
 
     def create_widgets(self):
         menubar = tk.Menu(self.root)
@@ -1098,22 +1114,30 @@ class BinaryEditorApp:
 
             focused_widget = self.root.focus_get()
 
-            if (focused_widget == self.find_text and 
-                self.encoding_var.get() in ['utf-16le', 'utf-16be']):
-    
-                cleaned_text = self.convert_utf16_exe_text(clipboard_text)
+            current_encoding = self.encoding_var.get()
+            is_utf16_mode = current_encoding in ['utf-16le', 'utf-16be']
+            is_text_input = focused_widget in [self.find_text, self.replace_text]
         
+            if is_utf16_mode and is_text_input:
+                cleaned_text = self.convert_utf16_exe_text(clipboard_text)
+            
                 self.input_type_var.set("字符串")
                 self.find_mode = "text"
-                self.find_text.config(state=tk.NORMAL)
-                current_pos = self.find_text.index(tk.INSERT)
-                self.find_text.insert(current_pos, cleaned_text)
-                self.validate_input()
-        
+            
+                if focused_widget == self.find_text:
+                    self.find_text.config(state=tk.NORMAL)
+                    current_pos = self.find_text.index(tk.INSERT)
+                    self.find_text.insert(current_pos, cleaned_text)
+                    self.validate_input()
+                elif focused_widget == self.replace_text:
+                    current_pos = self.replace_text.index(tk.INSERT)
+                    self.replace_text.insert(current_pos, cleaned_text)
+                    self.validate_replace_input()
+            
                 if cleaned_text != clipboard_text:
-                    self.update_status("UTF-16点分隔字符串已转换")
+                    self.update_status(f"UTF-16点分隔文本已转换: {clipboard_text} -> {cleaned_text}")
                 else:
-                    self.update_status(f"UTF-16模式：已粘贴文本")
+                    self.update_status("已粘贴文本(UTF-16模式)")
                 return "break"
 
             if focused_widget == self.find_text:
@@ -1366,7 +1390,7 @@ class BinaryEditorApp:
 
     def show_about(self):
         about_text = """汉化辅助编辑器
-版本6.1    [B站偷吃布丁的涅普缇努制作，第四梦境协助修改]
+版本6.2    [B站偷吃布丁的涅普缇努制作，第四梦境协助修改]
 
 一个简单的二进制文件编辑器
 
@@ -2349,6 +2373,11 @@ class HexViewer:
     def delete_bytes(self):
         if self.app:
             self.app.delete_bytes()
+
+    def reset_highlight(self):
+        self.highlight_start = -1
+        self.highlight_end = -1
+        self.update_view()
 
     def convert_to_space(self):
         if self.right_click_pos is not None:

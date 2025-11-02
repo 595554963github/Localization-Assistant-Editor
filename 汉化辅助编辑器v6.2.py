@@ -1134,8 +1134,9 @@ class BinaryEditorApp:
                     self.find_text.insert("1.0", cleaned_text)
                     self.validate_input()
                 elif focused_widget == self.replace_text:
+                    processed_text = self.process_replace_text(cleaned_text)
                     self.replace_text.delete("1.0", tk.END)
-                    self.replace_text.insert("1.0", cleaned_text)
+                    self.replace_text.insert("1.0", processed_text)
                     self.validate_replace_input()
             
                 if cleaned_text != clipboard_text:
@@ -1176,35 +1177,12 @@ class BinaryEditorApp:
                     current_pos = self.find_text.index(tk.INSERT)
                     self.find_text.insert(current_pos, "无法解码为字符串")
                     self.find_text.config(state=tk.DISABLED)
-        
+                    
             elif focused_widget == self.replace_text:
-                cleaned_text = re.sub(r'[\n\r\t]', '', clipboard_text)
-
-                cleaned_text = re.sub(r'([\u4e00-\u9fff])\s+', r'\1', cleaned_text)
-                cleaned_text = re.sub(r'\s+([\u4e00-\u9fff])', r'\1', cleaned_text) 
-
-                cleaned_text = re.sub(r' {2,}', ' ', cleaned_text)
-
-                cleaned_text = cleaned_text.strip()
-
-                translation_table = str.maketrans({
-                '（': '(', '）': ')', '：': ':', '；': ';', 
-                '「': '"', '」': '"', '『': '"', '』': '"',
-                '《': '<', '》': '>', '【': '[', '】': ']',
-                '、': ',', '．': '.', '‘': "'", '’': "'",
-                '“': '"', '”': '"', '„': '"', '‟': '"',
-                '‹': '<', '›': '>', '«': '"', '»': '"',
-                '？': '?', '！': '!', '—': '-', '–': '-',
-                '～': '~', '‧': '.', '§': '§', '€': 'EUR',
-                '£': 'GBP', '¥': 'JPY', '¢': 'c', '°': 'deg'
-                })
-            
-                processed_text = cleaned_text.translate(translation_table)
-
+                processed_text = self.process_replace_text(clipboard_text)
                 current_pos = self.replace_text.index(tk.INSERT)
                 self.replace_text.insert(current_pos, processed_text)
                 self.validate_replace_input()
-
             elif focused_widget == self.replace_hex_entry:
                 cleaned_text = re.sub(r'[^0-9A-Fa-f]', '', clipboard_text).upper()
                 hex_pairs = [cleaned_text[i:i+2] for i in range(0, len(cleaned_text), 2)]
@@ -1217,6 +1195,35 @@ class BinaryEditorApp:
         except tk.TclError:
             pass
         return "break"
+
+    def process_replace_text(self, text):
+        cleaned_text = re.sub(r'[\n\r\t]', '', text)
+    
+        cleaned_text = re.sub(r'([\u4e00-\u9fff])\s+', r'\1', cleaned_text)
+        cleaned_text = re.sub(r'\s+([\u4e00-\u9fff])', r'\1', cleaned_text)
+    
+        cleaned_text = re.sub(r' {2,}', ' ', cleaned_text)
+    
+        cleaned_text = cleaned_text.strip()
+    
+        translation_table = str.maketrans({
+            '（': '(', '）': ')', '：': ':', '；': ';', 
+            '「': '"', '」': '"', '『': '"', '』': '"',
+            '《': '<', '》': '>', '【': '[', '】': ']',
+            '、': ',', '．': '.', '‘': "'", '’': "'",
+            '“': '"', '”': '"', '„': '"', '‟': '"',
+            '‹': '<', '›': '>', '«': '"', '»': '"',
+            '？': '?', '！': '!', '—': '-', '–': '-',
+            '～': '~', '‧': '.', '§': '§', '€': 'EUR',
+            '£': 'GBP', '¥': 'JPY', '¢': 'c', '°': 'deg',
+            '，': ',', '…': '...','∶': ':', 
+            '﹕': ':', '﹔': ';', '﹖': '?', '﹗': '!', 
+            '﹏': '~', '﹑': ',','﹒': '.','‧': '.', 
+        })
+    
+        processed_text = cleaned_text.translate(translation_table)
+    
+        return processed_text
 
     def schedule_text_processing(self, event):
         self.root.after(10, lambda: self.process_text_format(event.widget))

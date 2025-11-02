@@ -550,11 +550,16 @@ class BinaryEditorApp:
         input_text.focus_set()
 
     def convert_utf16_exe_text(self, text):
+        original_text = text
         cleaned = re.sub(r'[\n\r\t]', '', text)
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
         cleaned = re.sub(r'\.\.', '\n', cleaned)
         cleaned = re.sub(r'\.', '', cleaned)
         cleaned = re.sub('\n', '.', cleaned)
+    
+        if original_text != cleaned:
+            print(f"UTF-16点分隔文本转换:{original_text}->{cleaned}")
+    
         return cleaned
     
     def show_encoding_converter(self):
@@ -1123,15 +1128,14 @@ class BinaryEditorApp:
             
                 self.input_type_var.set("字符串")
                 self.find_mode = "text"
-            
+                self.update_input_fields_state()            
                 if focused_widget == self.find_text:
-                    self.find_text.config(state=tk.NORMAL)
-                    current_pos = self.find_text.index(tk.INSERT)
-                    self.find_text.insert(current_pos, cleaned_text)
+                    self.find_text.delete("1.0", tk.END)
+                    self.find_text.insert("1.0", cleaned_text)
                     self.validate_input()
                 elif focused_widget == self.replace_text:
-                    current_pos = self.replace_text.index(tk.INSERT)
-                    self.replace_text.insert(current_pos, cleaned_text)
+                    self.replace_text.delete("1.0", tk.END)
+                    self.replace_text.insert("1.0", cleaned_text)
                     self.validate_replace_input()
             
                 if cleaned_text != clipboard_text:

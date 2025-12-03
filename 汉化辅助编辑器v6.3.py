@@ -496,7 +496,69 @@ class BinaryEditorApp:
         
         except Exception:
             return False
+    def show_cp932_converter(self):
+        converter_window = tk.Toplevel(self.root)
+        converter_window.title("CP932乱码修复器")
+        converter_window.geometry("600x400")
+        converter_window.minsize(500, 300)
     
+        main_frame = ttk.Frame(converter_window, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+    
+        input_frame = ttk.LabelFrame(main_frame, text="输入乱码的GBK字符串")
+        input_frame.pack(fill=tk.X, pady=(0, 10))
+    
+        input_text = tk.Text(input_frame, height=5, wrap=tk.WORD)
+        input_text.pack(fill=tk.X, padx=5, pady=5)
+    
+        output_frame = ttk.LabelFrame(main_frame, text="转换后的CP932日语字符串")
+        output_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+    
+        output_text = tk.Text(output_frame, height=5, wrap=tk.WORD)
+        output_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+   
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+    
+        def convert_cp932():
+            try:
+                gbk_str = input_text.get("1.0", tk.END).strip()
+                if not gbk_str:
+                    output_text.delete("1.0", tk.END)
+                    return
+           
+                gbk_bytes = gbk_str.encode('gbk', errors='ignore')
+                cp932_str = gbk_bytes.decode('cp932', errors='ignore')
+            
+                output_text.delete("1.0", tk.END)
+                output_text.insert("1.0", cp932_str)
+            
+            except Exception as e:
+                messagebox.showerror("转换错误", f"转换失败:{str(e)}")
+    
+        def copy_result():
+            result = output_text.get("1.0", tk.END).strip()
+            if result:
+                self.root.clipboard_clear()
+                self.root.clipboard_append(result)
+                self.update_status("已复制CP932转换结果到剪贴板")
+
+        def clear_all():
+            input_text.delete("1.0", tk.END)
+            output_text.delete("1.0", tk.END)
+   
+        def on_input_change(event=None):
+            converter_window.after(100, convert_cp932)
+        ttk.Button(button_frame, text="转换", command=convert_cp932).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="复制", command=copy_result).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="清空", command=clear_all).pack(side=tk.LEFT, padx=5)
+    
+        info_label = ttk.Label(main_frame, 
+                          text="此工具用于把日本软件在Windows系统上显示乱码的字符串还原成日语，方便用户汉化",
+                          foreground="blue", font=("Microsoft YaHei", 11))
+        info_label.pack(pady=(5, 0))   
+        input_text.focus_set()
+
     def show_clipboard_converter(self):
         converter_window = tk.Toplevel(self.root)
         converter_window.title("UTF-16剪贴板字符串转换器")
@@ -542,7 +604,6 @@ class BinaryEditorApp:
         def clear_all():
             input_text.delete("1.0", tk.END)
             result_text.delete("1.0", tk.END)
-
         ttk.Button(button_frame, text="清空", command=clear_all).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="关闭", command=converter_window.destroy).pack(side=tk.RIGHT, padx=5)
 
@@ -561,127 +622,7 @@ class BinaryEditorApp:
             print(f"UTF-16点分隔文本转换:{original_text}->{cleaned}")
     
         return cleaned
-    
-    def show_encoding_converter(self):
-        converter_window = tk.Toplevel(self.root)
-        converter_window.title("实时编码转换器")
-        converter_window.geometry("900x600")
-        converter_window.minsize(700, 400)
-    
-        main_frame = ttk.Frame(converter_window, padding="10")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-    
-        input_frame = ttk.LabelFrame(main_frame, text="输入字符串")
-        input_frame.pack(fill=tk.X, pady=(0, 10))
-    
-        ttk.Label(input_frame, text="输入要转换的字符串:").pack(anchor=tk.W, padx=5, pady=5)
-    
-        input_text = tk.Text(input_frame, height=4, wrap=tk.WORD)
-        input_text.pack(fill=tk.X, padx=5, pady=5)
-    
-        result_frame = ttk.LabelFrame(main_frame, text="编码结果")
-        result_frame.pack(fill=tk.BOTH, expand=True)
-    
-        columns = ("编码格式", "字节序列", "长度")
-        result_tree = ttk.Treeview(result_frame, columns=columns, show="headings", height=15)
-    
-        result_tree.heading("编码格式", text="编码格式")
-        result_tree.column("编码格式", width=120, anchor=tk.W)
-    
-        result_tree.heading("字节序列", text="字节序列")
-        result_tree.column("字节序列", width=400, anchor=tk.W)
-    
-        result_tree.heading("长度", text="长度")
-        result_tree.column("长度", width=80, anchor=tk.CENTER)
-    
-        scrollbar = ttk.Scrollbar(result_frame, orient=tk.VERTICAL, command=result_tree.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        result_tree.configure(yscrollcommand=scrollbar.set)
-    
-        result_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-    
-        def on_tree_right_click(event):
-            item = result_tree.identify_row(event.y)
-            if item:
-                result_tree.selection_set(item)
-                context_menu.post(event.x_root, event.y_root)
-
-        result_tree.bind("<Button-3>", on_tree_right_click)
-
-        def get_unicode_codepoints(text):
-            codepoints = []
-            for char in text:
-                codepoint = ord(char)
-                codepoints.append(f"0x{codepoint:04X}")
-            return ', '.join(codepoints)
-    
-        def update_conversion(event=None):
-            for item in result_tree.get_children():
-                result_tree.delete(item)
-        
-            text = input_text.get("1.0", tk.END).strip()
-            if not text:
-                return
-        
-            unicode_codepoints = get_unicode_codepoints(text)
-            result_tree.insert("", tk.END, values=(
-                "Unicode码点",
-                unicode_codepoints,
-                f"{len(text)} 字符"
-            ))
-        
-            encoding_groups = [
-                {
-                    'name': '中文编码',
-                    'encodings': ['gbk', 'gb2312', 'big5']
-                },
-                {
-                    'name': 'Unicode编码',
-                    'encodings': ['utf-8', 'utf-16le', 'utf-16be', 'utf-7']
-                },
-                {
-                    'name': '日文编码',
-                    'encodings': ['shift_jis', 'euc-jp']
-                },
-                {
-                    'name': '西欧编码',
-                    'encodings': ['iso-8859-1', 'latin1', 'ascii']
-                }
-            ]
-        
-            for group in encoding_groups:
-                result_tree.insert("", tk.END, values=(
-                    f"--- {group['name']} ---",
-                    "",
-                    ""
-                ))
-            
-                for encoding in group['encodings']:
-                    try:
-                        encoded_bytes = text.encode(encoding, errors='replace')
-                        hex_representation = ' '.join(f"{b:02X}" for b in encoded_bytes)
-                        byte_length = len(encoded_bytes)
-                    
-                        result_tree.insert("", tk.END, values=(
-                            encoding.upper(),
-                            hex_representation,
-                            f"{byte_length}字节"
-                        ))
-                    
-                    except Exception as e:
-                        result_tree.insert("", tk.END, values=(
-                            encoding.upper(),
-                            f"编码错误: {str(e)}",
-                            "N/A"
-                        ))
-    
-        input_text.bind("<KeyRelease>", update_conversion)
-    
-        update_conversion()
-    
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X, pady=(10, 0))
-    
+      
         def copy_selected():
             selected = result_tree.selection()
             if not selected:
@@ -808,7 +749,7 @@ class BinaryEditorApp:
         edit_menu.add_command(label="导出指定范围ASCII", command=self.export_selected_range, accelerator="F6")
         edit_menu.add_command(label="导入ASCII", command=self.import_replace_file, accelerator="F7")
         edit_menu.add_separator()
-        edit_menu.add_command(label="实时编码转换器", command=self.show_encoding_converter, accelerator="F8")
+        edit_menu.add_command(label="CP932乱码修复器", command=self.show_cp932_converter, accelerator="F8")
         edit_menu.add_command(label="剪贴板字符串转换器", command=self.show_clipboard_converter, accelerator="F9")
         edit_menu.add_separator()
         menubar.add_cascade(label="选择功能", menu=edit_menu)
@@ -829,7 +770,7 @@ class BinaryEditorApp:
         self.root.bind("<F5>", lambda e: self.export_ascii_text())
         self.root.bind("<F6>", lambda e: self.export_selected_range())
         self.root.bind("<F7>", lambda e: self.import_replace_file())
-        self.root.bind("<F8>", lambda e: self.show_encoding_converter())
+        self.root.bind("<F8>", lambda e: self.show_cp932_converter())
         self.root.bind("<F9>", lambda e: self.show_clipboard_converter())
         self.root.bind("<Control-S>", lambda e: self.save_file())
         self.root.bind("<Control-T>", lambda e: self.save_file_as())
@@ -1074,7 +1015,7 @@ class BinaryEditorApp:
         if count is None:
             return
             
-        if not messagebox.askyesno("确认删除", f"确定要删除从位置0x{pos:08X}开始的{count}个字节吗？"):
+        if not messagebox.askyesno("确认删除", f"确定要删除从位置0x{pos:08X}开始的{count}个字节吗?"):
             return
             
         del self.file_data[pos:pos + count]
@@ -1146,6 +1087,7 @@ class BinaryEditorApp:
                 return "break"
 
             if focused_widget == self.find_text:
+                processed_text = self.process_replace_text(clipboard_text)
                 cleaned_text = re.sub(r'[\n\r\t]', '', clipboard_text).strip()
                 self.input_type_var.set("字符串")
                 self.find_mode = "text"
@@ -1199,8 +1141,8 @@ class BinaryEditorApp:
     def process_replace_text(self, text):
         cleaned_text = re.sub(r'[\n\r\t]', '', text)
     
-        cleaned_text = re.sub(r'([\u4e00-\u9fff])\s+', r'\1', cleaned_text)
-        cleaned_text = re.sub(r'\s+([\u4e00-\u9fff])', r'\1', cleaned_text)
+        cleaned_text = re.sub(r'([\u4e00-\u9fff])\s+([A-Za-z0-9])', r'\1\2', cleaned_text)
+        cleaned_text = re.sub(r'([A-Za-z0-9])\s+([\u4e00-\u9fff])', r'\1\2', cleaned_text)
     
         cleaned_text = re.sub(r' {2,}', ' ', cleaned_text)
     
@@ -1401,7 +1343,7 @@ class BinaryEditorApp:
 
     def show_about(self):
         about_text = """汉化辅助编辑器
-版本6.2    [B站偷吃布丁的涅普缇努制作，第四梦境协助修改]
+版本6.3    [B站偷吃布丁的涅普缇努制作，第四梦境协助修改]
 
 一个简单的二进制文件编辑器
 

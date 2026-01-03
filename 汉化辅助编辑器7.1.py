@@ -50,9 +50,7 @@ class BinaryEditorApp:
         self.current_string_index = -1
         self.sidebar_expanded = True
         self.scan_mode_var = tk.StringVar(value="ansi")
-        self.menubar = tk.Menu(self.root)
-        self.root.config(menu=self.menubar)
-        
+        self.menubar = tk.Menu(self.root)      
         self.common_symbols = set(' \'"!?.,:;()[]{}<>-+=*/\\&%$#@~`|')
         self.word_pattern = re.compile(r'^[A-Za-z][a-z]{2,}(?:[-\'\.][A-Za-z][a-z]*)*$')
         self.common_abbr = ['ok', 'hi', 'bye', 'yes', 'no', 'id', 'vs', 'am', 'pm']
@@ -60,6 +58,158 @@ class BinaryEditorApp:
         self.create_widgets()
         self.setup_drag_and_drop()
         self.update_status("就绪-请打开文件或拖拽文件到窗口")
+
+    def _is_likely_valid_text(self, text):
+        if not text or len(text) < 4:
+            return False
+        
+        digit_count = sum(1 for c in text if c.isdigit())
+        if digit_count > 1:
+            if not (re.search(r'%\d+', text) or re.search(r'\d+\.\d+', text)):
+                if re.search(r'[A-Za-z]\d[A-Za-z]\d', text) or re.search(r'\d[A-Za-z]\d[A-Za-z]', text):
+                    return False
+                if re.match(r'^\d+[A-Za-z]', text) and ' ' not in text[:5]:
+                    return False
+        
+        letters = sum(1 for c in text if c.isalpha())
+        if letters < len(text) * 0.3:
+            return False
+        
+        if re.match(r'^[0-9A-Fa-f]{8,}$', text):
+            return False
+        
+        special_chars = re.findall(r'[<>?^`@\\\[\]{}|;:,=+*&%$#!~]', text)
+        if len(special_chars) > len(text) * 0.2:
+            return False
+        
+        if len(text) >= 4:
+            vowels = set('aeiouAEIOU')
+            vowel_count = sum(1 for c in text if c in vowels)
+            consonant_count = sum(1 for c in text if c.isalpha() and c not in vowels)
+            
+            if consonant_count > 0 and vowel_count == 0 and len(text) > 6:
+                return False
+            
+            illegal_patterns = [
+                r'^[A-Za-z]\d[A-Za-z]{2,}$',
+                r'^\d[A-Za-z]\d[A-Za-z]+$',
+                r'^[A-Za-z]{2,}\d[A-Za-z]+$',
+            ]
+            
+            for pattern in illegal_patterns:
+                if re.match(pattern, text):
+                    return False
+        
+        words = re.findall(r'[A-Za-z]{3,}', text)
+        if len(words) >= 1:
+            return True
+        
+        if any(c in ' .,:;!?()' for c in text):
+            return True
+        
+        return False
+
+    def _is_basic_english(self, text):
+        if not text or len(text) < 4:
+            return False
+        
+        digit_count = sum(1 for c in text if c.isdigit())
+        if digit_count > 1:
+            if not (re.search(r'%\d+', text) or re.search(r'\d+\.\d+', text)):
+                if re.search(r'[A-Za-z]\d[A-Za-z]\d', text):
+                    return False
+        
+        letters = sum(1 for c in text if c.isalpha())
+        if letters < 3:
+            return False
+        
+        if re.match(r'^[0-9]+$', text) or re.match(r'^[0-9A-Fa-f]{8,}$', text):
+            return False
+        
+        if len(text) >= 4:
+            vowels = set('aeiouAEIOU')
+            vowel_count = sum(1 for c in text if c in vowels)
+            if vowel_count == 0 and len(text) > 8:
+                return False
+            
+            special_chars = re.findall(r'[\\\/@#$%^&*()\[\]{}=+|<>?~`;:]', text)
+            if len(special_chars) > len(text) * 0.15:
+                return False
+        
+        has_spaces = ' ' in text
+        has_punctuation = any(c in '.,:;!?()' for c in text)
+        if has_spaces or has_punctuation:
+            return True
+        
+        if letters >= len(text) * 0.6:
+            return True
+        
+        return False
+
+    def find_strings_simple(self, min_length=4):
+        segments = []
+        data_length = len(self.file_data)
+    
+        delimiters = {0x00, 0x09, 0x0A, 0x0D}
+    
+        current_pos = 0
+    
+        while current_pos < data_length:
+            while current_pos < data_length and self.file_data[current_pos] in delimiters:
+                current_pos += 1
+        
+            if current_pos >= data_length:
+                break
+        
+            segment_start = current_pos
+            segment_bytes = bytearray()
+        
+            while current_pos < data_length and self.file_data[current_pos] not in delimiters:
+                segment_bytes.append(self.file_data[current_pos])
+                current_pos += 1
+        
+            if len(segment_bytes) >= min_length:
+                try:
+                    text = segment_bytes.decode('ascii')
+                
+                    if self._is_basic_english(text):
+                    
+                        if len(text) > 200:
+                            continue
+                    
+                        is_printable = all(32 <= ord(c) <= 126 for c in text)
+                        if not is_printable:
+                            continue
+                    
+                        hex_chars = sum(1 for c in text if c in '0123456789ABCDEFabcdef')
+                        if hex_chars / len(text) > 0.7:
+                            continue
+                    
+                        letters = sum(1 for c in text if c.isalpha())
+                        letter_ratio = letters / len(text) if len(text) > 0 else 0
+                        if letter_ratio < 0.3:
+                            continue
+                    
+                        vowels = set('aeiouAEIOU')
+                        vowel_count = sum(1 for c in text if c in vowels)
+                        if vowel_count == 0 and len(text) > 8:
+                            continue
+                    
+                        special_chars = re.findall(r'[\\\/@#$%^&*()\[\]{}=+|<>?~`;:]', text)
+                        if len(special_chars) > len(text) * 0.15:
+                            continue
+                    
+                        segments.append({
+                            "start": segment_start,
+                            "end": current_pos - 1,
+                            "length": len(segment_bytes),
+                            "text": text,
+                            "bytes": segment_bytes
+                        })
+                except:
+                    pass
+    
+        return segments
 
     def setup_drag_and_drop(self):
         try:
@@ -77,7 +227,7 @@ class BinaryEditorApp:
             file_path = event.data.strip('{}')
             self.process_dropped_file(file_path)
         except Exception as e:
-            messagebox.showerror("错误", f"处理拖拽文件时出错: {str(e)}")
+            messagebox.showerror("错误", f"处理拖拽文件时出错:{str(e)}")
 
     def process_dropped_file(self, file_path):
         if os.path.isfile(file_path):
@@ -85,364 +235,302 @@ class BinaryEditorApp:
         else:
             messagebox.showerror("错误", "请拖拽有效的文件")
 
-    def is_valid_english_word(self, text):
-        if not text:
-            return False
-        if len(text) < 3 or len(text) > 50:
-            return False
-        if not text[0].isalpha():
-            return False
-        
-        letter_count = sum(1 for c in text if c.isalpha())
-        digit_count = sum(1 for c in text if c.isdigit())
-        symbol_count = sum(1 for c in text if c in self.common_symbols)
-        other_count = len(text) - letter_count - digit_count - symbol_count
-        
-        if other_count > 0:
-            return False
-        if letter_count < len(text) * 0.6:
-            return False
-        if digit_count > len(text) * 0.3:
-            return False
-        if symbol_count > len(text) * 0.2:
-            return False
-        
-        vowels = set('aeiouAEIOU')
-        if not any(c in vowels for c in text):
-            return False
-        
-        if text.isupper() and len(text) > 3:
-            return False
-        
-        text_lower = text.lower()
-        
-        code_patterns = [
-            r'^[a-z][a-z0-9_]*$',
-            r'^[A-Z_]+$',
-            r'^[A-Z][A-Za-z0-9_]*$',
-            r'^[a-z][a-z]*_[a-z][a-z]*$',
-            r'^[a-z]+[A-Z][a-z]*$',
-        ]
-        
-        for pattern in code_patterns:
-            if re.match(pattern, text):
-                return False
-        
-        if ' ' not in text:
-            if len(text) < 4 and text.isupper():
-                return False
-            if not self.word_pattern.match(text):
-                if text_lower not in self.common_abbr:
-                    return False
-        else:
-            words = text.split()
-            valid_words = 0
-            for word in words:
-                if self.word_pattern.match(word) or len(word) >= 3 and word.isalpha():
-                    valid_words += 1
-            if valid_words < len(words) * 0.5:
-                return False
-        
-        return True
-
-    def is_valid_string_enhanced(self, text):
-        if not text or len(text) < 3:
-            return False
-        if any(ord(c) > 127 for c in text):
-            return False
-        
-        code_patterns = [
-            r'^[A-Za-z]\$[A-Za-z0-9]',
-            r'^[A-Za-z]\$\d',
-            r'^[A-Za-z]\d[A-Za-z]',
-            r'^[A-Za-z]\d+\$',
-            r'^[A-Za-z]9[A-Za-z]',
-            r'^[A-Za-z];[A-Za-z]',
-            r'^[A-Za-z]\\[A-Za-z]',
-            r'^[A-Za-z]\[',
-            r'^[A-Za-z]\([A-Za-z]',
-            r'^[A-Za-z]\)',
-            r'^[A-Za-z]\|[A-Za-z]',
-            r'^[A-Za-z]\*[A-Za-z]',
-            r'^[A-Za-z]\+[A-Za-z]',
-            r'^[A-Za-z]-[A-Za-z]',
-        ]
-        
-        for pattern in code_patterns:
-            if re.search(pattern, text):
-                return False
-        
-        if any(c in text for c in '$;|`\\@#%^&*()[]{}<>?/~=+'):
-            if '$' in text and not text.startswith('$') and text[text.find('$')-1].isdigit():
-                pass
-            elif '%' in text and not text.startswith('%') and text[text.find('%')-1].isdigit():
-                pass
-            else:
-                return False
-        
-        if re.search(r'(.)\1{2,}', text):
-            return False
-        
-        letters = sum(1 for c in text if c.isalpha())
-        if letters < max(2, len(text) * 0.5):
-            return False
-        
-        if not any(vowel in text.lower() for vowel in 'aeiou'):
-            return False
-        
-        if re.match(r'^[0-9A-Fa-f]{4,}$', text):
-            return False
-        if re.match(r'^\d{1,3}(\.\d{1,3}){3}$', text):
-            return False
-        
-        asm_patterns = [r'^[A-D][HLX]$', r'^[E-S]I$', r'^[E-S]P$', 
-                       r'^R[0-9]+[A-D]?$', r'^XMM[0-9]+$', r'^YMM[0-9]+$']
-        
-        for pattern in asm_patterns:
-            if re.match(pattern, text):
-                return False
-        
-        return True
-
-    def find_intelligent_strings(self, min_length=4):
+    def find_unicode_strings(self, min_length=2, encoding_type="le"):
         segments = []
-        current_pos = 0
         data_length = len(self.file_data)
-        encoding = self.encoding_var.get()
-        
-        def is_text_byte(byte, encoding):
-            if encoding in ['utf-8', 'gbk']:
-                if 32 <= byte <= 126:
-                    return True
-                elif byte >= 0x80:
-                    return True
-            return False
-        
-        def is_utf16_text_pair(byte1, byte2, encoding):
-            if encoding == 'utf-16le':
-                return (byte2 == 0 and 32 <= byte1 <= 126) or (byte1 == 0 and 32 <= byte2 <= 126)
-            elif encoding == 'utf-16be':
-                return (byte1 == 0 and 32 <= byte2 <= 126) or (byte2 == 0 and 32 <= byte1 <= 126)
-            return False
-        
-        if encoding in ['utf-8', 'gbk']:
-            while current_pos < data_length:
-                while current_pos < data_length and not is_text_byte(self.file_data[current_pos], encoding):
-                    current_pos += 1
+        ansi_occupied = set()
+
+        def mark_ansi_segments():
+            i = 0
+            while i < data_length:
+                if 32 <= self.file_data[i] <= 126 and (i+1 >= data_length or self.file_data[i+1] != 0x00):
+                    start = i
+                    while i < data_length and 32 <= self.file_data[i] <= 126:
+                        i += 1
+                    ansi_length = i - start
+                    if ansi_length >= 3:
+                        ansi_text = bytes(self.file_data[start:i]).decode('ascii', errors='ignore')
+                        if self._is_likely_valid_text(ansi_text):
+                            for pos in range(start, i):
+                                ansi_occupied.add(pos)
+                else:
+                    i += 1
+
+        mark_ansi_segments()
+
+        if encoding_type == "le":
+            i = 0
+            while i < data_length - 1:
+                if i % 2 != 0 or i in ansi_occupied or (i+1) in ansi_occupied:
+                    i += 1
+                    continue
                 
-                if current_pos >= data_length:
-                    break
+                if self.file_data[i+1] != 0x00 or not (32 <= self.file_data[i] <= 126):
+                    i += 1
+                    continue
                 
-                segment_start = current_pos
-                segment_bytes = bytearray()
-                valid_chars = 0
+                conflict = False
+                if i > 0:
+                    ansi_end = i - 1
+                    while ansi_end >= max(0, i-20):
+                        if self.file_data[ansi_end] == 0x00:
+                            ansi_start_candidate = ansi_end + 1
+                            ansi_len_candidate = i - ansi_start_candidate
+                            if ansi_len_candidate >= 3:
+                                ansi_chars = self.file_data[ansi_start_candidate:i]
+                                printable_rate = sum(1 for b in ansi_chars if 32 <= b <= 126) / ansi_len_candidate
+                                if printable_rate >= 0.8:
+                                    conflict = True
+                                    break
+                        ansi_end -= 1
+                if conflict:
+                    i += 1
+                    continue
                 
-                while current_pos < data_length and is_text_byte(self.file_data[current_pos], encoding):
-                    byte = self.file_data[current_pos]
-                    segment_bytes.append(byte)
-                    current_pos += 1
-                    valid_chars += 1
+                start = i
+                bytes_collected = bytearray()
+                unicode_count = 0
+                valid_continuous = True
+
+                while i < data_length - 1 and valid_continuous:
+                    if i in ansi_occupied or (i+1) in ansi_occupied:
+                        break
+                    
+                    if self.file_data[i+1] == 0x00 and (32 <= self.file_data[i] <= 126):
+                        bytes_collected.extend([self.file_data[i], self.file_data[i+1]])
+                        unicode_count += 1
+                        i += 2
+                        
+                        if i < data_length - 1:
+                            if i % 2 != 0:
+                                valid_continuous = False
+                            elif not (self.file_data[i+1] == 0x00 and (32 <= self.file_data[i] <= 126)):
+                                valid_continuous = False
+                    else:
+                        valid_continuous = False
                 
-                if valid_chars >= min_length:
+                if unicode_count >= min_length:
                     try:
-                        segment_text = segment_bytes.decode(encoding)
-                        if self.is_valid_string_enhanced(segment_text):
-                            if self.is_valid_english_word(segment_text):
-                                segments.append({
-                                "start": segment_start,
-                                "end": segment_start + len(segment_bytes) - 1,
-                                 "text": segment_text, 
-                                "length": len(segment_bytes),
-                                "bytes": segment_bytes
+                        text = bytes_collected.decode('utf-16le').rstrip('\x00')
+                        if text and self._is_likely_valid_text(text) and len(text) == unicode_count:
+                            segments.append({
+                                "start": start,
+                                "end": i - 1,
+                                "length": len(bytes_collected),
+                                "text": text,
+                                "bytes": bytes_collected,
+                                "encoding": "utf-16le"
                             })
-                    except UnicodeDecodeError:
+                    except:
                         pass
-        
-        elif encoding in ['utf-16le', 'utf-16be']:
-            while current_pos < data_length - 1:
-                while current_pos < data_length - 1 and not is_utf16_text_pair(
-                    self.file_data[current_pos], self.file_data[current_pos + 1], encoding):
-                    current_pos += 1
+                else:
+                    i = start + 1
+
+        else:
+            i = 0
+            while i < data_length - 1:
+                if i % 2 != 0 or i in ansi_occupied or (i+1) in ansi_occupied:
+                    i += 1
+                    continue
                 
-                if current_pos >= data_length - 1:
-                    break
+                if self.file_data[i] != 0x00 or not (32 <= self.file_data[i+1] <= 126):
+                    i += 1
+                    continue
                 
-                segment_start = current_pos
-                segment_bytes = bytearray()
-                valid_chars = 0
+                conflict = False
+                if i > 0:
+                    ansi_end = i - 1
+                    while ansi_end >= max(0, i-20):
+                        if self.file_data[ansi_end] == 0x00:
+                            ansi_start_candidate = ansi_end + 1
+                            ansi_len_candidate = i - ansi_start_candidate
+                            if ansi_len_candidate >= 3:
+                                ansi_chars = self.file_data[ansi_start_candidate:i]
+                                printable_rate = sum(1 for b in ansi_chars if 32 <= b <= 126) / ansi_len_candidate
+                                if printable_rate >= 0.8:
+                                    conflict = True
+                                    break
+                        ansi_end -= 1
+                if conflict:
+                    i += 1
+                    continue
                 
-                while current_pos < data_length - 1 and is_utf16_text_pair(
-                    self.file_data[current_pos], self.file_data[current_pos + 1], encoding):
-                    byte1 = self.file_data[current_pos]
-                    byte2 = self.file_data[current_pos + 1]
-                    segment_bytes.extend([byte1, byte2])
-                    current_pos += 2
-                    valid_chars += 1
+                start = i
+                bytes_collected = bytearray()
+                unicode_count = 0
+                valid_continuous = True
+
+                while i < data_length - 1 and valid_continuous:
+                    if i in ansi_occupied or (i+1) in ansi_occupied:
+                        break
+                    
+                    if self.file_data[i] == 0x00 and (32 <= self.file_data[i+1] <= 126):
+                        bytes_collected.extend([self.file_data[i], self.file_data[i+1]])
+                        unicode_count += 1
+                        i += 2
+                        
+                        if i < data_length - 1:
+                            if i % 2 != 0:
+                                valid_continuous = False
+                            elif not (self.file_data[i] == 0x00 and (32 <= self.file_data[i+1] <= 126)):
+                                valid_continuous = False
+                    else:
+                        valid_continuous = False
                 
-                if valid_chars >= min_length:
+                if unicode_count >= min_length:
                     try:
-                        segment_text = segment_bytes.decode(encoding)
-                        if self.is_valid_string_enhanced(segment_text):
-                            if self.is_valid_english_word(segment_text):
-                                segments.append({
-                                    "start": segment_start,
-                                    "end": current_pos - 1,
-                                    "length": len(segment_bytes),
-                                    "text": segment_text,
-                                    "bytes": segment_bytes
-                                })
-                    except UnicodeDecodeError:
+                        text = bytes_collected.decode('utf-16be').rstrip('\x00')
+                        if text and self._is_likely_valid_text(text) and len(text) == unicode_count:
+                            segments.append({
+                                "start": start,
+                                "end": i - 1,
+                                "length": len(bytes_collected),
+                                "text": text,
+                                "bytes": bytes_collected,
+                                "encoding": "utf-16be"
+                            })
+                    except:
                         pass
-        
-        segments.sort(key=lambda x: x["start"])
+                else:
+                    i = start + 1
+
         return segments
 
-    def find_unicode_strings(self, min_length=2):
+    def _find_utf16be_strings(self, data_length, min_length):
         segments = []
         current_pos = 0
-        data_length = len(self.file_data)
     
         while current_pos < data_length - 1:
             while current_pos < data_length - 1:
                 byte1 = self.file_data[current_pos]
                 byte2 = self.file_data[current_pos + 1]
-                if byte2 == 0 and (32 <= byte1 <= 126):
+                if (byte1, byte2) in {(0x00, 0x00), (0x00, 0x09), (0x00, 0x0A), (0x00, 0x0D)}:
+                    current_pos += 2
+                else:
                     break
-                current_pos += 1
         
             if current_pos >= data_length - 1:
                 break
         
+            byte1 = self.file_data[current_pos]
+            byte2 = self.file_data[current_pos + 1]
+        
+            if not (byte1 == 0 and 32 <= byte2 <= 126):
+                current_pos += 1
+                continue
+        
             segment_start = current_pos
             segment_bytes = bytearray()
-            valid_chars = 0
         
             while current_pos < data_length - 1:
                 byte1 = self.file_data[current_pos]
                 byte2 = self.file_data[current_pos + 1]
             
-                if byte2 == 0 and (32 <= byte1 <= 126):
-                    segment_bytes.extend([byte1, byte2])
-                    current_pos += 2
-                    valid_chars += 1
-                else:
-                    try:
-                        char_bytes = bytes([byte1, byte2])
-                        char = char_bytes.decode('utf-16le')
-                        if char.isprintable():
-                            segment_bytes.extend(char_bytes)
-                            current_pos += 2
-                            valid_chars += 1
-                        else:
-                            break
-                    except UnicodeDecodeError:
-                        break
-        
-            if valid_chars >= min_length:
+                if (byte1, byte2) in {(0x00, 0x00), (0x00, 0x09), (0x00, 0x0A), (0x00, 0x0D)}:
+                    break
+            
+                if not (byte1 == 0 and 32 <= byte2 <= 126):
+                    break
+            
+                segment_bytes.extend([byte1, byte2])
+                current_pos += 2
+         
+            if len(segment_bytes) >= min_length * 2:
                 try:
-                    segment_text = segment_bytes.decode('utf-16le')
+                    segment_text = segment_bytes.decode('utf-16be')
                     segment_text = segment_text.rstrip('\x00')
-                
-                    if '.' in segment_text and len(segment_text) > 1:
-                        if self.is_dot_separated_unicode(segment_bytes):
-                            normal_text = self.convert_dot_separated_unicode(segment_bytes)
-                            if normal_text and self.is_valid_string_enhanced(normal_text):
-                                segment_text = normal_text
-                
-                    if self.is_valid_string_enhanced(segment_text):
-                        if self.is_valid_english_word(segment_text):
-                            segments.append({
-                                "start": segment_start,
-                                "end": current_pos - 1,
-                                "length": len(segment_bytes),
-                                "text": segment_text,
-                                "encoding": "UTF-16LE",
-                                "bytes": segment_bytes
-                            })
-                except UnicodeDecodeError:
+                    if segment_text and self._is_likely_valid_text(segment_text):
+                        segments.append({
+                            "start": segment_start,
+                            "end": current_pos - 1,
+                            "length": len(segment_bytes),
+                            "text": segment_text,
+                            "bytes": segment_bytes,
+                            "encoding": "utf-16be"
+                        })
+                except:
                     pass
     
         return segments
 
-    def is_dot_separated_unicode(self, byte_data):
-        if len(byte_data) < 4:
-            return False
-        try:
-            text = byte_data.decode('utf-16le')
-            if text.count('.') > len(text) * 0.1:
-                for i in range(0, len(text) - 2, 2):
-                    if text[i] != '.' and text[i+1] == '.':
-                        return True
-        except:
-            pass
-        return False
-
-    def convert_dot_separated_unicode(self, byte_data):
-        try:
-            text = byte_data.decode('utf-16le')
-            cleaned = text.replace('.', '')
-            cleaned = cleaned.rstrip('\x00')
-            return cleaned
-        except:
-            return None
-
     def scan_strings_for_sidebar(self):
         if not self.file_data:
             messagebox.showwarning("警告", "请先打开文件")
-            return   
-        scan_mode = self.scan_mode_var.get()  
-        if scan_mode == "unicode":
-            self.encoding_var.set("utf-16le")
-            self.update_status("已自动切换到UTF-16小端序编码")
-        else:
-            self.encoding_var.set("utf-8")
-            self.update_status("已自动切换到UTF-8编码")  
-        self.on_encoding_changed() 
+            return
+    
+        scan_mode = self.scan_mode_var.get()
+    
+        self.on_encoding_changed()
         self.string_entries = []
         for item in self.string_tree.get_children():
             self.string_tree.delete(item)
-        segments = []  
+    
+        segments = []
+    
         if scan_mode == "ansi":
-            segments = self.find_intelligent_strings(min_length=4)
-        elif scan_mode == "unicode":
-            raw_segments = self.find_unicode_strings(min_length=2)
-            for segment in raw_segments:
-                if self.is_valid_string_enhanced(segment["text"]):
-                    segments.append(segment)
+            self.encoding_var.set("utf-8")
+            self.update_status("ANSI扫描模式:默认使用UTF-8编码,但有可能是GBK编码")
+            segments = self.find_strings_simple(min_length=4)
+        
+        elif scan_mode == "unicode_le":
+            self.encoding_var.set("utf-16le")
+            self.update_status("正在扫描UTF-16LE编码字符串")
+            segments = self.find_unicode_strings(min_length=2, encoding_type="le")
+        elif scan_mode == "unicode_be":
+            self.encoding_var.set("utf-16be")
+            self.update_status("正在扫描UTF-16BE编码字符串")
+            segments = self.find_unicode_strings(min_length=2, encoding_type="be")
+    
         if not segments:
             messagebox.showinfo("无结果", "未找到有效字符串")
             return
+    
         segments.sort(key=lambda x: x["start"])
         for i, segment in enumerate(segments):
             segment_length = segment.get("length", segment["end"] - segment["start"] + 1)
+            if scan_mode == "ansi":
+                encoding = "utf-8"
+            elif scan_mode == "unicode_le":
+                encoding = "utf-16le"
+            elif scan_mode == "unicode_be":
+                encoding = "utf-16be"
+            else:
+                encoding = "utf-8"
+            
             self.string_entries.append({
                 "id": i + 1,
                 "address": segment["start"],
                 "length": segment["length"],
-                "text": segment["text"]
-            })      
+                "text": segment["text"],
+                "bytes": segment.get("bytes", b""),
+                "encoding": encoding
+            })
             display_text = segment["text"]
             if len(display_text) > 30:
-                display_text = display_text[:27] + "..."     
+                display_text = display_text[:27] + "..."
             self.string_tree.insert("", tk.END, values=(
                 i + 1,
                 f"0x{segment['start']:08X}",
                 segment["length"],
                 display_text
             ))
+    
         if self.string_tree.get_children():
             self.string_tree.selection_set(self.string_tree.get_children()[0])
 
     def on_scan_mode_changed(self, event=None):
         scan_mode = self.scan_mode_var.get()
-        
-        if scan_mode == "unicode":
+    
+        if scan_mode == "unicode_le":
             self.encoding_var.set("utf-16le")
-            self.update_status("已切换到Unicode扫描模式,编码自动设置为UTF-16小端序")
+            self.update_status("已切换到UTF-16LE扫描模式")
+        elif scan_mode == "unicode_be":
+            self.encoding_var.set("utf-16be")
+            self.update_status("已切换到UTF-16BE扫描模式")
         else:
             self.encoding_var.set("utf-8")
-            self.update_status("已切换到ANSI扫描模式,编码自动设置为UTF-8")
-        
+            self.update_status("ANSI扫描模式:默认UTF-8,也可能是GBK,汉化之前请先备份")
+    
         self.on_encoding_changed()
 
     def show_cp932_converter(self):
@@ -810,8 +898,8 @@ class BinaryEditorApp:
         ttk.Label(sidebar_controls, text="模式:").pack(side=tk.LEFT, padx=2)
         self.scan_mode_var = tk.StringVar(value="ansi")
         self.scan_mode_menu = ttk.Combobox(sidebar_controls, textvariable=self.scan_mode_var,
-                                   values=["ansi", "unicode"], 
-                                   state="readonly", width=10)
+                                   values=["ansi", "unicode_le", "unicode_be"], 
+                                   state="readonly", width=12)
         self.scan_mode_menu.pack(side=tk.LEFT, padx=2)
         self.scan_mode_menu.bind("<<ComboboxSelected>>", self.on_scan_mode_changed)
         ttk.Button(sidebar_controls, text="扫描", command=self.scan_strings_for_sidebar).pack(side=tk.LEFT, padx=2)
@@ -863,27 +951,23 @@ class BinaryEditorApp:
                 entry_index = int(values[0]) - 1
                 entry = self.string_entries[entry_index]
                 text = entry["text"]
-                original_bytes = entry.get("bytes", b"")
-                self.current_string_index = entry_index
-                encoding = self.encoding_var.get()
-            
-                actual_length = entry.get("length", 0)
-                if actual_length == 0 and original_bytes:
-                    actual_length = len(original_bytes)
-            
-                if encoding in ['utf-16le', 'utf-16be']:
-                    actual_length = max(actual_length, len(text.encode(encoding)))
-                    if actual_length % 2 != 0:
-                        actual_length += 1
-            
-                actual_length = min(actual_length, len(self.file_data) - address)
+                encoding = entry.get("encoding", "utf-8")
             
                 self.hex_viewer.scroll_to_address(address)
+                actual_length = entry.get("length", 0)
                 if actual_length > 0:
                     self.hex_viewer.highlight_range(address, address + actual_length - 1)
             
                 self.find_mode = "text"
                 self.input_type_var.set("字符串")
+            
+                current_scan_mode = self.scan_mode_var.get()
+                if current_scan_mode == "ansi" and self.encoding_var.get() in ['utf-16le', 'utf-16be']:
+                    self.encoding_var.set("utf-8")
+                    self.update_status("ANSI字符串已选中,默认使用UTF-8编码,但也可能是GBK编码,请先备份再尝试")
+                else:
+                    self.encoding_var.set(encoding)
+            
                 self.find_text.delete("1.0", tk.END)
                 self.find_text.insert("1.0", text)
                 self.find_text.config(state=tk.NORMAL)
@@ -892,7 +976,7 @@ class BinaryEditorApp:
                 self.replace_hex_entry.config(state=tk.NORMAL)
             
                 self.current_find_text = text
-                find_bytes = original_bytes if original_bytes else text.encode(encoding)
+                find_bytes = entry.get("bytes", text.encode(encoding))
                 self.current_matches = [{"pos": address, "bytes": find_bytes}]
                 self.current_match_index = 0
             
@@ -908,7 +992,7 @@ class BinaryEditorApp:
                 self.replace_all_button.config(state=tk.NORMAL)
                 self.replace_buttons_disabled = False
             
-                self.update_status(f"已选中字符串:{text[:50]}{'...' if len(text) > 50 else ''}")
+                self.update_status(f"已选中字符串({encoding}):{text[:50]}{'...' if len(text) > 50 else ''}")
             except (ValueError, IndexError) as e:
                 self.update_status(f"选中错误:{e}")
 
@@ -979,19 +1063,6 @@ class BinaryEditorApp:
             self.update_status(f"已保存:{os.path.basename(self.file_path)}")
         except Exception as e:
             messagebox.showerror("保存失败", str(e))
-
-    def on_find_key_release(self, event):
-        self.adjust_text_height(self.find_text)
-        self.validate_input(event)
-        self.check_long_text(self.find_text)
-        self.process_text_format(self.find_text)
-        return "break"
-
-    def on_replace_key_release(self, event):
-        self.adjust_text_height(self.replace_text)
-        self.validate_replace_input(event)
-        self.check_long_text(self.replace_text)
-        self.process_text_format(self.replace_text)
 
     def adjust_text_height(self, text_widget):
         line_count = int(text_widget.index(tk.END).split('.')[0]) - 1
@@ -1114,22 +1185,24 @@ class BinaryEditorApp:
     
             if focused_widget == self.replace_text and self.replace_text.cget('state') == tk.DISABLED:
                 return "break"
+        
             clipboard_text = self.root.clipboard_get()
             if not clipboard_text:
                 return "break"
 
             focused_widget = self.root.focus_get()
-
+        
             current_encoding = self.encoding_var.get()
             is_utf16_mode = current_encoding in ['utf-16le', 'utf-16be']
             is_text_input = focused_widget in [self.find_text, self.replace_text]
         
             if is_utf16_mode and is_text_input:
                 cleaned_text = self.convert_utf16_exe_text(clipboard_text)
-                
+            
                 self.input_type_var.set("字符串")
                 self.find_mode = "text"
-                self.update_input_fields_state()            
+                self.update_input_fields_state()
+            
                 if focused_widget == self.find_text:
                     self.find_text.delete("1.0", tk.END)
                     self.find_text.insert("1.0", cleaned_text)
@@ -1139,15 +1212,14 @@ class BinaryEditorApp:
                     self.replace_text.delete("1.0", tk.END)
                     self.replace_text.insert("1.0", processed_text)
                     self.validate_replace_input()
-                
+            
                 if cleaned_text != clipboard_text:
-                    self.update_status(f"UTF-16点分隔文本已转换:{clipboard_text}->{cleaned_text}")
+                    self.update_status(f"UTF-16点分隔文本已转换")
                 else:
                     self.update_status("已粘贴文本(UTF-16模式)")
                 return "break"
 
             if focused_widget == self.find_text:
-                processed_text = self.process_replace_text(clipboard_text)
                 cleaned_text = re.sub(r'[\n\r\t]', '', clipboard_text).strip()
                 self.input_type_var.set("字符串")
                 self.find_mode = "text"
@@ -1155,41 +1227,29 @@ class BinaryEditorApp:
                 current_pos = self.find_text.index(tk.INSERT)
                 self.find_text.insert(current_pos, cleaned_text)
                 self.validate_input()
+                self.update_status(f"已粘贴文本到查找框")
 
             elif focused_widget == self.find_hex_entry:
                 self.input_type_var.set("十六进制")
                 self.find_mode = "hex"
-
                 cleaned_text = re.sub(r'[^0-9A-Fa-f]', '', clipboard_text).upper()
                 hex_pairs = [cleaned_text[i:i+2] for i in range(0, len(cleaned_text), 2)]
                 hex_str = ' '.join(hex_pairs)
-
                 current_pos = self.find_hex_entry.index(tk.INSERT)
                 self.find_hex_entry.insert(current_pos, hex_str)
                 self.validate_hex_input()
 
-                try:
-                    byte_data = bytes.fromhex(cleaned_text)
-                    self.find_text.config(state=tk.NORMAL)
-                    current_pos = self.find_text.index(tk.INSERT)
-                    self.find_text.insert(current_pos, byte_data.decode('latin1'))
-                    self.find_text.config(state=tk.DISABLED)
-                except Exception:
-                    self.find_text.config(state=tk.NORMAL)
-                    current_pos = self.find_text.index(tk.INSERT)
-                    self.find_text.insert(current_pos, "无法解码为字符串")
-                    self.find_text.config(state=tk.DISABLED)
-                    
             elif focused_widget == self.replace_text:
                 processed_text = self.process_replace_text(clipboard_text)
                 current_pos = self.replace_text.index(tk.INSERT)
                 self.replace_text.insert(current_pos, processed_text)
                 self.validate_replace_input()
+                self.update_status(f"已粘贴替换文本并处理标点符号")
+
             elif focused_widget == self.replace_hex_entry:
                 cleaned_text = re.sub(r'[^0-9A-Fa-f]', '', clipboard_text).upper()
                 hex_pairs = [cleaned_text[i:i+2] for i in range(0, len(cleaned_text), 2)]
                 hex_str = ' '.join(hex_pairs)
-
                 current_pos = self.replace_hex_entry.index(tk.INSERT)
                 self.replace_hex_entry.insert(current_pos, hex_str)
                 self.validate_replace_hex_input()
@@ -1221,6 +1281,7 @@ class BinaryEditorApp:
             ',': ',', '…': '...','∶': ':', 
             '﹕': ':', '﹔': ';', '﹖': '?', '﹗': '!', 
             '﹏': '~', '﹑': ',','﹒': '.','‧': '.', 
+            '，': ',', 
         })
         
         processed_text = cleaned_text.translate(translation_table)
@@ -1403,7 +1464,7 @@ class BinaryEditorApp:
 
     def show_about(self):
         about_text = """汉化辅助编辑器
-版本7.0    [B站偷吃布丁的涅普缇努制作,第四梦境协助修改]
+版本7.1    [B站偷吃布丁的涅普缇努制作,第四梦境协助修改]
 
 一个简单的二进制文件编辑器
 
@@ -1737,37 +1798,7 @@ dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化�
             self.results_tree.focus(self.results_tree.get_children()[0])
             self.on_result_select(None)
         else:
-            self.update_status("未找到匹配项")
-
-    def find_utf16_matches(self, text, encoding):
-        try:
-            if encoding == 'utf-16le':
-                find_bytes = text.encode('utf-16le')
-            elif encoding == 'utf-16be':
-                find_bytes = text.encode('utf-16be')
-            else:
-                return []
-            
-            matches = []
-            start = 0
-            
-            while True:
-                pos = self.file_data.find(find_bytes, start)
-                if pos == -1:
-                    break
-                
-                matches.append({
-                    "pos": pos,
-                    "bytes": find_bytes,
-                    "text": text
-                })
-                start = pos + 1
-            
-            return matches
-            
-        except Exception as e:
-            self.update_status(f"UTF-16查找错误:{str(e)}")
-            return []    
+            self.update_status("未找到匹配项") 
 
     def find_next(self):
         if not self.current_matches:
@@ -1867,18 +1898,6 @@ dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化�
         self._load_history_state()
         self.update_status(f"已重做到状态{self.history_index + 1}/{len(self.history)}")
 
-    def _load_history_state(self):
-        if 0 <= self.history_index < len(self.history):
-            self.file_data = copy.copy(self.history[self.history_index])
-            self.hex_viewer.set_data(self.file_data)
-            self.hex_viewer.update_view()
-            
-            self.root.update_idletasks()
-            
-            self.update_status(f"当前状态:{self.history_index + 1}/{len(self.history)}")
-        else:
-            self.update_status("历史状态索引错误")
-
     def save_history_state(self):
         if self.history_index < len(self.history) - 1:
             self.history = self.history[:self.history_index + 1]
@@ -1891,6 +1910,18 @@ dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化�
             self.history_index -= 1
 
         self.update_status(f"当前状态已保存(共{len(self.history)}个历史状态)")
+
+    def _load_history_state(self):
+        if 0 <= self.history_index < len(self.history):
+            self.file_data = copy.copy(self.history[self.history_index])
+            self.hex_viewer.set_data(self.file_data)
+            self.hex_viewer.update_view()
+        
+            self.root.update_idletasks()
+        
+            self.update_status(f"当前状态:{self.history_index + 1}/{len(self.history)}")
+        else:
+            self.update_status("历史状态索引错误")
 
     def replace_current(self):
         if self.current_match_index < 0 or self.current_match_index >= len(self.current_matches):
@@ -1929,8 +1960,14 @@ dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化�
              values=(f"0x{pos:08X}", bytes_to_hex(replace_bytes)))
         self.hex_viewer.set_data(self.file_data)
         self.hex_viewer.highlight_range(pos, pos + len(replace_bytes) - 1)
+        self.find_text.config(state=tk.NORMAL)
+        self.find_text.delete("1.0", tk.END)
+        self.find_hex_entry.delete(0, tk.END)
         self.replace_text.delete("1.0", tk.END)
         self.replace_hex_entry.delete(0, tk.END)
+        self.find_mode = "text"
+        self.input_type_var.set("字符串")
+        self.update_input_fields_state()
         self.update_status(f"已替换位置0x{pos:08X}的内容")
         self.save_history_state()
 
@@ -1986,15 +2023,14 @@ dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化�
                 self.file_data[pos + i] = replace_bytes[i]
 
             match["bytes"] = replace_bytes
-
         self.find_text.config(state=tk.NORMAL)
         self.find_text.delete("1.0", tk.END)
-        self.find_text.config(state=tk.DISABLED)
-
         self.find_hex_entry.delete(0, tk.END)
         self.replace_text.delete("1.0", tk.END)
         self.replace_hex_entry.delete(0, tk.END)
-
+        self.find_mode = "text"
+        self.input_type_var.set("字符串")
+        self.update_input_fields_state()
         self.find_matches()
         self.hex_viewer.set_data(self.file_data)
         self.update_status(f"已替换所有匹配项")

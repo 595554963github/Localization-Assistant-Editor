@@ -468,8 +468,7 @@ class BinaryEditorApp:
         segments = []
     
         if scan_mode == "ansi":
-            self.encoding_var.set("utf-8")
-            self.update_status("ANSI扫描模式:默认使用UTF-8编码,但有可能是GBK编码")
+            self.update_status("ANSI扫描模式:请手动选择编码,UTF-8或GBK")
             segments = self.find_strings_simple(min_length=4)
         
         elif scan_mode == "unicode_le":
@@ -489,7 +488,7 @@ class BinaryEditorApp:
         for i, segment in enumerate(segments):
             segment_length = segment.get("length", segment["end"] - segment["start"] + 1)
             if scan_mode == "ansi":
-                encoding = "utf-8"
+                encoding = "未知(请手动选择)"
             elif scan_mode == "unicode_le":
                 encoding = "utf-16le"
             elif scan_mode == "unicode_be":
@@ -528,8 +527,7 @@ class BinaryEditorApp:
             self.encoding_var.set("utf-16be")
             self.update_status("已切换到UTF-16BE扫描模式")
         else:
-            self.encoding_var.set("utf-8")
-            self.update_status("ANSI扫描模式:默认UTF-8,也可能是GBK,汉化之前请先备份")
+            self.update_status("ANSI扫描模式:请手动选择编码,UTF-8或GBK")
     
         self.on_encoding_changed()
 
@@ -952,34 +950,41 @@ class BinaryEditorApp:
                 entry = self.string_entries[entry_index]
                 text = entry["text"]
                 encoding = entry.get("encoding", "utf-8")
-            
+        
                 self.hex_viewer.scroll_to_address(address)
                 actual_length = entry.get("length", 0)
                 if actual_length > 0:
                     self.hex_viewer.highlight_range(address, address + actual_length - 1)
-            
+        
                 self.find_mode = "text"
                 self.input_type_var.set("字符串")
-            
+                current_encoding = self.encoding_var.get()
                 current_scan_mode = self.scan_mode_var.get()
-                if current_scan_mode == "ansi" and self.encoding_var.get() in ['utf-16le', 'utf-16be']:
-                    self.encoding_var.set("utf-8")
-                    self.update_status("ANSI字符串已选中,默认使用UTF-8编码,但也可能是GBK编码,请先备份再尝试")
-                else:
-                    self.encoding_var.set(encoding)
             
+                if current_scan_mode == "ansi":
+                    self.update_status(f"ANSI字符串已选中,当前编码:{current_encoding},请确认编码是否正确")
+                else:
+                    self.update_status(f"字符串已选中,当前编码:{current_encoding}")
+        
                 self.find_text.delete("1.0", tk.END)
                 self.find_text.insert("1.0", text)
+                try:
+                    find_bytes = text.encode(current_encoding, errors='ignore')
+                    self.find_hex_entry.delete(0, tk.END)
+                    self.find_hex_entry.insert(0, bytes_to_hex(find_bytes))
+                except Exception as e:
+                    print(f"更新十六进制显示时出错:{e}")
+
                 self.find_text.config(state=tk.NORMAL)
                 self.find_hex_entry.config(state=tk.NORMAL)
                 self.replace_text.config(state=tk.NORMAL)
                 self.replace_hex_entry.config(state=tk.NORMAL)
-            
+        
                 self.current_find_text = text
-                find_bytes = entry.get("bytes", text.encode(encoding))
+                find_bytes = text.encode(current_encoding, errors='ignore')
                 self.current_matches = [{"pos": address, "bytes": find_bytes}]
                 self.current_match_index = 0
-            
+        
                 self.results_count_label.config(text=f"匹配数量:1")
                 for item in self.results_tree.get_children():
                     self.results_tree.delete(item)
@@ -987,12 +992,12 @@ class BinaryEditorApp:
                     f"0x{address:08X}",
                     bytes_to_hex(find_bytes)
                 ))
-            
+        
                 self.replace_button.config(state=tk.NORMAL)
                 self.replace_all_button.config(state=tk.NORMAL)
                 self.replace_buttons_disabled = False
-            
-                self.update_status(f"已选中字符串({encoding}):{text[:50]}{'...' if len(text) > 50 else ''}")
+        
+                self.update_status(f"已选中字符串({current_encoding}):{text[:50]}{'...' if len(text) > 50 else ''}")
             except (ValueError, IndexError) as e:
                 self.update_status(f"选中错误:{e}")
 

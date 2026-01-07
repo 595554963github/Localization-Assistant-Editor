@@ -11,14 +11,14 @@ class BinaryEditorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("汉化辅助编辑器")
-        self.root.geometry("1400x1000")
-        self.root.minsize(1000, 600)
+        self.root.geometry("1200x900")
+        self.root.minsize(800, 600)
         self.root.option_add("*Font", "SimSun 11")
 
         self.max_input_length = 500      
         self.extended_threshold = 200  
         self.max_extended_lines = 10      
-        self.initial_height = 4
+        self.initial_height = 3
 
         self.file_path = ""
         self.file_data = bytearray()
@@ -505,8 +505,8 @@ class BinaryEditorApp:
                 "encoding": encoding
             })
             display_text = segment["text"]
-            if len(display_text) > 30:
-                display_text = display_text[:27] + "..."
+            if len(display_text) > 20:
+                display_text = display_text[:17] + "..."
             self.string_tree.insert("", tk.END, values=(
                 i + 1,
                 f"0x{segment['start']:08X}",
@@ -762,7 +762,7 @@ class BinaryEditorApp:
         self.root.bind("<Control-Down>", lambda e: self.next_string())
         
         main_container = ttk.Frame(self.root)
-        main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        main_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         left_container = ttk.Frame(main_container)
         left_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -779,9 +779,9 @@ class BinaryEditorApp:
         self.file_size_label.grid(row=0, column=3, sticky=tk.W, padx=5, pady=5)
 
         hex_frame = ttk.LabelFrame(left_container, text="十六进制视图")
-        hex_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        hex_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
 
-        self.hex_viewer = HexViewer(hex_frame, width=80, height=16, app=self)
+        self.hex_viewer = HexViewer(hex_frame, width=70, height=12, app=self)
         self.hex_viewer.hex_text.bind("<Button-1>", self.on_hex_click)
         self.hex_viewer.ascii_text.bind("<Button-1>", self.on_ascii_click)
         self.hex_viewer.hex_text.bind("<Button-3>", self.hex_viewer.on_hex_right_click)
@@ -791,13 +791,13 @@ class BinaryEditorApp:
         v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.hex_viewer.set_scroll_command(v_scrollbar.set)
         results_frame = ttk.LabelFrame(left_container, text="匹配结果")
-        results_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        results_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
 
         self.results_count_label = ttk.Label(results_frame, text="匹配数量:0")
         self.results_count_label.pack(anchor=tk.W, padx=5, pady=2)
 
         columns = ("位置", "字节")
-        self.results_tree = ttk.Treeview(results_frame, columns=columns, show="headings", height=5)
+        self.results_tree = ttk.Treeview(results_frame, columns=columns, show="headings", height=4)
         self.results_tree.heading("位置", text="位置(可复制)")
         self.results_tree.column("位置", width=120, anchor=tk.CENTER)
         self.results_tree.heading("字节", text="字节")
@@ -814,7 +814,7 @@ class BinaryEditorApp:
         self.results_tree.bind("<ButtonRelease-1>", self.on_result_click)
 
         search_frame = ttk.LabelFrame(left_container, text="查找和替换")
-        search_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        search_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
 
         search_frame.grid_columnconfigure(1, weight=0)
         search_frame.grid_columnconfigure(2, weight=0)
@@ -837,8 +837,8 @@ class BinaryEditorApp:
         self.encoding_menu.bind("<<ComboboxSelected>>", self.on_encoding_changed)
 
         ttk.Label(search_frame, text="查找字符串:").grid(row=2, column=0, sticky=tk.NW, padx=10, pady=10)
-        self.find_text = tk.Text(search_frame, wrap=tk.NONE)
-        self.find_text.grid(row=2, column=1, columnspan=3, sticky=tk.NSEW, padx=5, pady=5)
+        self.find_text = tk.Text(search_frame, wrap=tk.NONE, height=3)
+        self.find_text.grid(row=2, column=1, columnspan=3, sticky=tk.NSEW, padx=5, pady=2)
         self.find_text.bind("<KeyRelease>", self.validate_input)
         self.find_text.bind("<FocusIn>", self.on_find_focus)
         self.find_text.bind("<Control-v>", self.handle_paste)
@@ -889,7 +889,7 @@ class BinaryEditorApp:
         self.replace_all_button.grid(row=0, column=4, padx=5, pady=5)
 
         self.sidebar_frame = ttk.LabelFrame(main_container, text="字符串列表")
-        self.sidebar_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=(10, 0), pady=0)
+        self.sidebar_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=(5, 0), pady=0)
         
         sidebar_controls = ttk.Frame(self.sidebar_frame)
         sidebar_controls.pack(fill=tk.X, padx=5, pady=5)
@@ -905,7 +905,7 @@ class BinaryEditorApp:
         ttk.Button(sidebar_controls, text="下一个", command=self.next_string).pack(side=tk.LEFT, padx=2)
         
         columns = ("ID", "地址", "长度", "内容")
-        self.string_tree = ttk.Treeview(self.sidebar_frame, columns=columns, show="headings", height=25)
+        self.string_tree = ttk.Treeview(self.sidebar_frame, columns=columns, show="headings", height=15)
         
         self.string_tree.heading("ID", text="ID")
         self.string_tree.column("ID", width=40, anchor=tk.CENTER)
@@ -928,11 +928,11 @@ class BinaryEditorApp:
         self.string_tree.bind("<<TreeviewSelect>>", self.on_string_selected)
         self.string_tree.bind("<Double-1>", self.on_string_double_click)
 
-        status_frame = ttk.Frame(self.root, height=20)
+        status_frame = ttk.Frame(self.root, height=25)
         status_frame.pack(side=tk.BOTTOM, fill=tk.X)
         status_frame.pack_propagate(False)
-        self.status_bar = ttk.Label(status_frame, text="就绪", anchor=tk.W)
-        self.status_bar.pack(side=tk.TOP, fill=tk.X)
+        self.status_bar = ttk.Label(status_frame, text="就绪", anchor=tk.NW, padding=(2, 0, 0, 0))
+        self.status_bar.pack(fill=tk.X, side=tk.TOP)
 
         self.find_mode = "text"
         self.update_input_fields_state()
@@ -1928,51 +1928,63 @@ dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化�
         else:
             self.update_status("历史状态索引错误")
 
-    def replace_current(self):
-        if self.current_match_index < 0 or self.current_match_index >= len(self.current_matches):
-            self.update_status("没有选中的匹配项")
-            return
-        replace_str = self.replace_text.get("1.0", tk.END).strip()
-        if not replace_str:
-            self.update_status("请输入替换内容")
-            return
-        match = self.current_matches[self.current_match_index]
-        pos = match["pos"]
-        original_bytes = match["bytes"]
-        original_length = len(original_bytes)
-        encoding = self.encoding_var.get()
-        replace_bytes = self.input_to_bytes(replace_str, encoding)
-        if not replace_bytes:
-            return
+    def _replace_at_position(self, pos, find_bytes, replace_bytes):
+        original_length = len(find_bytes)
         replace_length = len(replace_bytes)
+        encoding = self.encoding_var.get()
+    
         if encoding in ['utf-16le', 'utf-16be'] and (original_length - replace_length) % 2 != 0:
             padding_length = original_length - replace_length
             if padding_length % 2 != 0:
                 padding_length += 1
+    
         if replace_length > original_length:
             excess_bytes = replace_length - original_length
-            messagebox.showerror("替换失败", f"替换内容比查找内容多{excess_bytes}字节,无法直接替换\n请修改替换内容长度或使用其他方式处理。")
-            self.update_status(f"替换失败:字节数超出{excess_bytes}")
-            return
+            return False, f"替换内容比查找内容多{excess_bytes}字节"
+    
         if replace_length < original_length:
             padding = self.get_padding_bytes(original_length - replace_length)
             replace_bytes = replace_bytes + padding
-            self.update_status(f"替换内容较短,已使用填充字节:{bytes_to_hex(padding)}")
+    
         for i in range(len(replace_bytes)):
             self.file_data[pos + i] = replace_bytes[i]
-        match["bytes"] = replace_bytes
+    
+        return True, bytes_to_hex(replace_bytes)
+
+    def replace_current(self):
+        if self.current_match_index < 0 or self.current_match_index >= len(self.current_matches):
+            self.update_status("没有选中的匹配项")
+            return
+    
+        replace_str = self.replace_text.get("1.0", tk.END).strip()
+        if not replace_str:
+            self.update_status("请输入替换内容")
+            return
+    
+        match = self.current_matches[self.current_match_index]
+        pos = match["pos"]
+        original_bytes = match["bytes"]
+        encoding = self.encoding_var.get()
+    
+        replace_bytes = self.input_to_bytes(replace_str, encoding)
+        if not replace_bytes:
+            return
+    
+        success, result = self._replace_at_position(pos, original_bytes, replace_bytes)
+    
+        if not success:
+            messagebox.showerror("替换失败", f"无法替换位置0x{pos:08X}的内容:\n{result}")
+            self.update_status(f"替换失败:{result}")
+            return
+    
+        match["bytes"] = bytes.fromhex(result.replace(" ", ""))
         self.results_tree.item(self.results_tree.get_children()[self.current_match_index],
-             values=(f"0x{pos:08X}", bytes_to_hex(replace_bytes)))
+             values=(f"0x{pos:08X}", result))
+    
         self.hex_viewer.set_data(self.file_data)
-        self.hex_viewer.highlight_range(pos, pos + len(replace_bytes) - 1)
-        self.find_text.config(state=tk.NORMAL)
-        self.find_text.delete("1.0", tk.END)
-        self.find_hex_entry.delete(0, tk.END)
-        self.replace_text.delete("1.0", tk.END)
-        self.replace_hex_entry.delete(0, tk.END)
-        self.find_mode = "text"
-        self.input_type_var.set("字符串")
-        self.update_input_fields_state()
+        self.hex_viewer.highlight_range(pos, pos + len(match["bytes"]) - 1)
+    
+        self._clear_input_fields()
         self.update_status(f"已替换位置0x{pos:08X}的内容")
         self.save_history_state()
 
@@ -1981,11 +1993,7 @@ dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化�
             self.update_status("没有匹配项可替换")
             return
 
-        if self.find_mode == "text":
-            find_str = self.find_text.get("1.0", tk.END).strip()
-        else:
-            find_str = self.find_hex_entry.get().strip()
-
+        find_str = self.find_text.get("1.0", tk.END).strip() if self.find_mode == "text" else self.find_hex_entry.get().strip()
         replace_str = self.replace_text.get("1.0", tk.END).strip()
 
         if not find_str or not replace_str:
@@ -1998,48 +2006,41 @@ dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化�
         if not find_bytes or not replace_bytes:
             return
 
-        original_length = len(find_bytes)
-        replace_length = len(replace_bytes)
-        encoding = self.encoding_var.get()
-        if encoding in ['utf-16le', 'utf-16be'] and (original_length - replace_length) % 2 != 0:
-            padding_length = original_length - replace_length
-            if padding_length % 2 != 0:
-                padding_length += 1
-
-        if replace_length > original_length:
-            excess_bytes = replace_length - original_length
-            messagebox.showerror("替换失败", f"替换内容比查找内容多{excess_bytes}字节,无法直接替换,请修改替换内容长度或使用其他方式处理。")
-            self.update_status(f"替换失败:字节数超出{excess_bytes}")
-            return
-
+        failed_positions = []
+    
         for match in sorted(self.current_matches, key=lambda x: x["pos"], reverse=True):
             pos = match["pos"]
-            original_length = len(find_bytes)
-            replace_length = len(replace_bytes)
+            original_bytes = find_bytes
+        
+            success, result = self._replace_at_position(pos, original_bytes, replace_bytes)
+        
+            if success:
+                match["bytes"] = bytes.fromhex(result.replace(" ", ""))
+            else:
+                failed_positions.append(f"0x{pos:08X}: {result}")
+    
+        if failed_positions:
+            failed_text = "\n".join(failed_positions)
+            messagebox.showwarning("部分替换失败", f"以下位置无法替换:\n{failed_text}")
+    
+        self._clear_input_fields()
+        self.find_matches()
+        self.hex_viewer.set_data(self.file_data)
+    
+        success_count = len(self.current_matches) - len(failed_positions)
+        self.update_status(f"已替换{success_count}个匹配项")
+        self.save_history_state()
 
-            if replace_length < original_length:
-                padding = self.get_padding_bytes(original_length - replace_length)
-                replace_bytes = replace_bytes + padding
-            elif replace_length > original_length:
-                self.update_status(f"替换内容比查找内容多{replace_length - original_length}字节，无法替换位置0x{pos:08X}")
-                continue
-
-            for i in range(len(replace_bytes)):
-                self.file_data[pos + i] = replace_bytes[i]
-
-            match["bytes"] = replace_bytes
+    def _clear_input_fields(self):
         self.find_text.config(state=tk.NORMAL)
         self.find_text.delete("1.0", tk.END)
         self.find_hex_entry.delete(0, tk.END)
         self.replace_text.delete("1.0", tk.END)
         self.replace_hex_entry.delete(0, tk.END)
+    
         self.find_mode = "text"
         self.input_type_var.set("字符串")
         self.update_input_fields_state()
-        self.find_matches()
-        self.hex_viewer.set_data(self.file_data)
-        self.update_status(f"已替换所有匹配项")
-        self.save_history_state()
 
     def get_padding_bytes(self, length):
         encoding = self.encoding_var.get()
@@ -2056,7 +2057,7 @@ dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化�
         return bytes([0x20] * length)
 
 class HexViewer:
-    def __init__(self, master, width=80, height=16, app=None):
+    def __init__(self, master, width=70, height=12, app=None):
         self.master = master
         self.app = app
         self.width = width
@@ -2092,7 +2093,7 @@ class HexViewer:
         self.start_address = 0
         self.highlight_start = -1
         self.highlight_end = -1
-
+        self.sidebar_width = 300
         self.hex_text.bind("<MouseWheel>", self._on_mousewheel)
         self.ascii_text.bind("<MouseWheel>", self._on_mousewheel)
         self.hex_text.bind("<Button-3>", self.on_hex_right_click)
@@ -2107,7 +2108,13 @@ class HexViewer:
         
         self.right_click_pos = None
         self.right_click_byte = None
-        
+        self.window_width_config = {
+            8: 800,
+            16: 1000,
+            32: "two_thirds",
+            48: "full"
+        }
+        self.initial_window_size = None
     def set_scroll_command(self, command):
         self.scroll_command = command
         self.hex_text.config(yscrollcommand=command)
@@ -2131,7 +2138,7 @@ class HexViewer:
         frame.pack(fill=tk.BOTH, expand=True)
 
         byte_options_frame = ttk.Frame(frame)
-        byte_options_frame.pack(fill=tk.X, pady=(0, 5))
+        byte_options_frame.pack(fill=tk.X, pady=(0, 2))
 
         ttk.Label(byte_options_frame, text="每行字节数:").pack(side=tk.LEFT, padx=5)
 
@@ -2141,15 +2148,15 @@ class HexViewer:
             btn.pack(side=tk.LEFT, padx=2)
 
         self.address_text = tk.Text(frame, width=10, height=self.height, wrap=tk.NONE,
-                                    font=("Consolas", 10), state=tk.DISABLED)
+                                    font=("Consolas", 9), state=tk.DISABLED)
         self.address_text.pack(side=tk.LEFT, fill=tk.Y)
 
-        self.hex_text = tk.Text(frame, width=self.width, height=self.height, wrap=tk.NONE,
-                                font=("Consolas", 10), state=tk.DISABLED)
+        self.hex_text = tk.Text(frame, width=70, height=self.height, wrap=tk.NONE,
+                                font=("Consolas", 9), state=tk.DISABLED)
         self.hex_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         self.ascii_text = tk.Text(frame, width=self.bytes_per_line, height=self.height, wrap=tk.NONE,
-                                  font=("Consolas", 10), state=tk.DISABLED)
+                                  font=("Consolas", 9), state=tk.DISABLED)
         self.ascii_text.pack(side=tk.LEFT, fill=tk.Y)
 
         self.vscrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL,
@@ -2179,6 +2186,38 @@ class HexViewer:
         self.ascii_text.config(width=self.bytes_per_line)
         self.update_view()
         self.scroll_to_address(current_pos)
+        self.adjust_window_width(bytes_per_line)
+
+    def adjust_window_width(self, bytes_per_line):
+        if not self.app or not hasattr(self.app, 'sidebar_frame'):
+            return
+    
+        current_window_width = self.app.root.winfo_width()
+        current_window_height = self.app.root.winfo_height()
+    
+        screen_width = self.app.root.winfo_screenwidth()
+    
+        sidebar_width = 300
+    
+        if bytes_per_line == 48:
+            left_width = screen_width - sidebar_width - 100
+        elif bytes_per_line == 32:
+            left_width = int(screen_width * 2 / 3)
+        elif bytes_per_line == 16:
+            left_width = 1000
+        else:
+            left_width = 800
+    
+        left_width = max(left_width, 600)
+    
+        new_window_width = left_width + sidebar_width + 50
+    
+        self.app.root.geometry(f"{new_window_width}x{current_window_height}")
+    
+        hex_width = bytes_per_line * 3
+        self.hex_text.config(width=hex_width)
+    
+        self.app.update_status(f"已切换到每行{bytes_per_line}字节模式，十六进制视图宽度已调整")
 
     def _on_scrollbar(self, *args):
         self.vscrollbar.set(*args)

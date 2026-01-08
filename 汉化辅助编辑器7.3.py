@@ -11,7 +11,7 @@ class BinaryEditorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("汉化辅助编辑器")
-        self.root.geometry("1200x900")
+        self.root.geometry("1200x1000")
         self.root.minsize(800, 600)
         self.root.option_add("*Font", "SimSun 11")
 
@@ -768,20 +768,23 @@ class BinaryEditorApp:
         left_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         file_info_frame = ttk.LabelFrame(left_container, text="文件信息")
-        file_info_frame.pack(fill=tk.X, pady=(0, 10))
+        file_info_frame.pack(fill=tk.X, pady=(0, 5))
+        info_container = ttk.Frame(file_info_frame)
+        info_container.pack(fill=tk.X, padx=5, pady=2)
+        ttk.Label(info_container, text="当前文件:").pack(side=tk.LEFT, padx=(0, 2))
+        self.file_path_label = ttk.Label(info_container, text="未选择文件", foreground="red")
+        self.file_path_label.pack(side=tk.LEFT, padx=(0, 10))
 
-        ttk.Label(file_info_frame, text="当前文件:").grid(row=0, column=0, sticky=tk.W, padx=10, pady=10)
-        self.file_path_label = ttk.Label(file_info_frame, text="未选择文件", foreground="red")
-        self.file_path_label.grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(info_container, text="文件大小:").pack(side=tk.LEFT, padx=(0, 2))
+        self.file_size_label = ttk.Label(info_container, text="0字节")
+        self.file_size_label.pack(side=tk.LEFT)
 
-        ttk.Label(file_info_frame, text="文件大小:").grid(row=0, column=2, sticky=tk.W, padx=10, pady=10)
-        self.file_size_label = ttk.Label(file_info_frame, text="0 字节")
-        self.file_size_label.grid(row=0, column=3, sticky=tk.W, padx=5, pady=5)
+        ttk.Frame(info_container).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         hex_frame = ttk.LabelFrame(left_container, text="十六进制视图")
-        hex_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+        hex_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 2))
 
-        self.hex_viewer = HexViewer(hex_frame, width=70, height=12, app=self)
+        self.hex_viewer = HexViewer(hex_frame, width=70, height=25, app=self)
         self.hex_viewer.hex_text.bind("<Button-1>", self.on_hex_click)
         self.hex_viewer.ascii_text.bind("<Button-1>", self.on_ascii_click)
         self.hex_viewer.hex_text.bind("<Button-3>", self.hex_viewer.on_hex_right_click)
@@ -791,13 +794,13 @@ class BinaryEditorApp:
         v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.hex_viewer.set_scroll_command(v_scrollbar.set)
         results_frame = ttk.LabelFrame(left_container, text="匹配结果")
-        results_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
-
-        self.results_count_label = ttk.Label(results_frame, text="匹配数量:0")
-        self.results_count_label.pack(anchor=tk.W, padx=5, pady=2)
-
+        results_frame.pack(fill=tk.BOTH, expand=False, pady=(0, 2))
+        results_header_frame = ttk.Frame(results_frame)
+        results_header_frame.pack(fill=tk.X, padx=5, pady=2)
+        self.results_count_label = ttk.Label(results_header_frame, text="匹配数量:0")
+        self.results_count_label.pack(side=tk.LEFT, padx=5, pady=2)
         columns = ("位置", "字节")
-        self.results_tree = ttk.Treeview(results_frame, columns=columns, show="headings", height=4)
+        self.results_tree = ttk.Treeview(results_frame, columns=columns, show="headings", height=2)
         self.results_tree.heading("位置", text="位置(可复制)")
         self.results_tree.column("位置", width=120, anchor=tk.CENTER)
         self.results_tree.heading("字节", text="字节")
@@ -814,15 +817,15 @@ class BinaryEditorApp:
         self.results_tree.bind("<ButtonRelease-1>", self.on_result_click)
 
         search_frame = ttk.LabelFrame(left_container, text="查找和替换")
-        search_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+        search_frame.pack(fill=tk.BOTH, expand=False, pady=(0, 5))
 
         search_frame.grid_columnconfigure(1, weight=0)
         search_frame.grid_columnconfigure(2, weight=0)
         search_frame.grid_columnconfigure(3, weight=1)
-        search_frame.grid_rowconfigure(2, weight=1)
-        search_frame.grid_rowconfigure(3, weight=1)
-        search_frame.grid_rowconfigure(4, weight=1)
-        search_frame.grid_rowconfigure(5, weight=1)
+        search_frame.grid_rowconfigure(2, weight=0)
+        search_frame.grid_rowconfigure(3, weight=0)
+        search_frame.grid_rowconfigure(4, weight=0)
+        search_frame.grid_rowconfigure(5, weight=0)
 
         ttk.Label(search_frame, text="输入类型:").grid(row=1, column=0, sticky=tk.W, padx=10, pady=10)
         input_type_menu = ttk.Combobox(search_frame, textvariable=self.input_type_var,
@@ -890,7 +893,22 @@ class BinaryEditorApp:
 
         self.sidebar_frame = ttk.LabelFrame(main_container, text="字符串列表")
         self.sidebar_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=(5, 0), pady=0)
-        
+        filter_frame = ttk.Frame(self.sidebar_frame)
+        filter_frame.pack(fill=tk.X, padx=5, pady=(5, 0))   
+        ttk.Label(filter_frame, text="过滤:").pack(side=tk.LEFT, padx=2)
+    
+        self.filter_var = tk.StringVar()
+        self.filter_entry = ttk.Entry(filter_frame, textvariable=self.filter_var)
+        self.filter_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        self.case_sensitive_var = tk.BooleanVar(value=True)
+        self.case_checkbox = ttk.Checkbutton(filter_frame, text="区分大小写", 
+                                        variable=self.case_sensitive_var,
+                                        command=self.on_filter_changed)
+        self.case_checkbox.pack(side=tk.LEFT, padx=5)
+        self.filter_var.trace_add('write', self.on_filter_changed)
+    
+        sidebar_controls = ttk.Frame(self.sidebar_frame)
+        sidebar_controls.pack(fill=tk.X, padx=5, pady=5)
         sidebar_controls = ttk.Frame(self.sidebar_frame)
         sidebar_controls.pack(fill=tk.X, padx=5, pady=5)
         ttk.Label(sidebar_controls, text="模式:").pack(side=tk.LEFT, padx=2)
@@ -1467,9 +1485,45 @@ class BinaryEditorApp:
             messagebox.showerror("错误", f"无法保存文件:{str(e)}")
             self.update_status(f"错误:无法保存文件-{str(e)}")
 
+    def on_filter_changed(self, *args):
+        filter_text = self.filter_var.get().strip()
+    
+        for item in self.string_tree.get_children():
+            self.string_tree.delete(item)
+    
+        if filter_text:
+            if not self.case_sensitive_var.get():
+                filter_text = filter_text.lower()
+        
+            for i, entry in enumerate(self.string_entries):
+                text_to_compare = entry["text"] if self.case_sensitive_var.get() else entry["text"].lower()
+            
+                if filter_text in text_to_compare:
+                    display_text = entry["text"]
+                    if len(display_text) > 20:
+                        display_text = display_text[:17] + "..."
+                
+                    self.string_tree.insert("", tk.END, values=(
+                        i + 1,
+                        f"0x{entry['address']:08X}",
+                        entry["length"],
+                        display_text
+                    ))
+        else:
+            for i, entry in enumerate(self.string_entries):
+                display_text = entry["text"]
+                if len(display_text) > 20:
+                    display_text = display_text[:17] + "..."
+            
+                self.string_tree.insert("", tk.END, values=(
+                    i + 1,
+                    f"0x{entry['address']:08X}",
+                    entry["length"],
+                    display_text
+                ))
     def show_about(self):
         about_text = """汉化辅助编辑器
-版本7.1    [B站偷吃布丁的涅普缇努制作,第四梦境协助修改]
+版本7.3    [B站偷吃布丁的涅普缇努制作,第四梦境协助修改]
 
 一个简单的二进制文件编辑器
 

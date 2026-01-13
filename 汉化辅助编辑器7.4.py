@@ -234,9 +234,9 @@ class BinaryEditorApp:
 
     def setup_drag_and_drop(self):
         try:
-            tkinterdnd2 = __import__('tkinterdnd2', fromlist=['DND_FILES'])
-            DND_FILES = getattr(tkinterdnd2, 'DND_FILES')
-        
+            import tkinterdnd2
+            DND_FILES = tkinterdnd2.DND_FILES
+    
             self.root.drop_target_register(DND_FILES)
             self.root.dnd_bind('<<Drop>>', self.on_drop_advanced)
             print("使用tkinterdnd2拖拽支持")

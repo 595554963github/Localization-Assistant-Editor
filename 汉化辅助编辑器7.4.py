@@ -753,11 +753,6 @@ class BinaryEditorApp:
         file_menu.add_command(label="退出", command=self.root.quit, accelerator="Ctrl+Q")
         menubar.add_cascade(label="文件", menu=file_menu)
 
-        view_menu = tk.Menu(menubar, tearoff=0)
-        view_menu.add_command(label="缩小(90%)", command=lambda: self.set_zoom(0.9))
-        view_menu.add_command(label="正常大小(100%)", command=lambda: self.set_zoom(1.0))
-        menubar.add_cascade(label="视图", menu=view_menu)
-
         edit_menu = tk.Menu(menubar, tearoff=0)
         edit_menu.add_command(label="撤销", command=self.undo, accelerator="Ctrl+Z")
         edit_menu.add_command(label="重做", command=self.redo, accelerator="Ctrl+Y")

@@ -11,25 +11,9 @@ class BinaryEditorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("汉化辅助编辑器")
-    
-        try:
-            from ctypes import windll
-            self.dpi = windll.user32.GetDpiForWindow(root.winfo_id())
-            self.scale_factor = self.dpi / 96.0 
-        except:
-            self.scale_factor = 1.0
-    
-        self.base_font_size = int(11 * self.scale_factor)
-    
-        self.zoom_level = 1.0
-        self.zoom_factors = [0.9, 1.0]
-    
-        initial_width = int(1200 * self.scale_factor)
-        initial_height = int(1000 * self.scale_factor * self.zoom_level)
-        self.root.geometry(f"{initial_width}x{initial_height}")
-        self.root.minsize(int(800 * self.scale_factor), int(600 * self.scale_factor))
-    
-        self.root.option_add("*Font", f"SimSun {self.base_font_size}")
+        self.root.geometry("1200x900")
+        self.root.minsize(800, 600)
+        self.root.option_add("*Font", "SimSun 11")
 
         self.max_input_length = 500      
         self.extended_threshold = 200  
@@ -56,9 +40,9 @@ class BinaryEditorApp:
         self.replace_type_var = tk.StringVar(value=self.input_type_options[0])
 
         self.encoding_options = [
-            'utf-8', 'gbk', 'utf-16le', 'utf-16be', 
-            'shift_jis', 'euc-jp', 'big5', 'gb2312', 
-            'iso-8859-1', 'utf-7', 'ascii', 'latin1'
+        'utf-8', 'gbk', 'utf-16le', 'utf-16be', 
+        'shift_jis', 'euc-jp', 'big5', 'gb2312', 
+        'iso-8859-1', 'utf-7', 'ascii', 'latin1'
         ]
         self.encoding_var = tk.StringVar(value=self.encoding_options[0])
 
@@ -70,16 +54,11 @@ class BinaryEditorApp:
         self.common_symbols = set(' \'"!?.,:;()[]{}<>-+=*/\\&%$#@~`|')
         self.word_pattern = re.compile(r'^[A-Za-z][a-z]{2,}(?:[-\'\.][A-Za-z][a-z]*)*$')
         self.common_abbr = ['ok', 'hi', 'bye', 'yes', 'no', 'id', 'vs', 'am', 'pm']
-    
+        
         self.create_widgets()
         self.setup_drag_and_drop()
         self.update_status("就绪-请打开文件或拖拽文件到窗口")
 
-    def on_window_resize(self, event=None):
-        if hasattr(self, 'hex_viewer'):
-            self.update_hex_viewer_height()
-        if hasattr(self, 'sidebar_frame') and self.sidebar_expanded:
-            pass
     def _is_likely_valid_text(self, text):
         if not text or len(text) < 4:
             return False
@@ -234,9 +213,7 @@ class BinaryEditorApp:
 
     def setup_drag_and_drop(self):
         try:
-            import tkinterdnd2
-            DND_FILES = tkinterdnd2.DND_FILES
-    
+            from tkinterdnd2 import DND_FILES
             self.root.drop_target_register(DND_FILES)
             self.root.dnd_bind('<<Drop>>', self.on_drop_advanced)
             print("使用tkinterdnd2拖拽支持")
@@ -752,6 +729,7 @@ class BinaryEditorApp:
         file_menu.add_separator()
         file_menu.add_command(label="退出", command=self.root.quit, accelerator="Ctrl+Q")
         menubar.add_cascade(label="文件", menu=file_menu)
+        
 
         edit_menu = tk.Menu(menubar, tearoff=0)
         edit_menu.add_command(label="撤销", command=self.undo, accelerator="Ctrl+Z")
@@ -783,53 +761,27 @@ class BinaryEditorApp:
         self.root.bind("<Control-Up>", lambda e: self.prev_string())
         self.root.bind("<Control-Down>", lambda e: self.next_string())
         
-        toolbar_frame = ttk.Frame(self.root)
-        toolbar_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=(5, 0))
-    
-        zoom_frame = ttk.Frame(toolbar_frame)
-        zoom_frame.pack(side=tk.LEFT, padx=(0, 20))
-    
-        ttk.Label(zoom_frame, text="界面缩放:").pack(side=tk.LEFT, padx=(0, 5))
-    
-        self.zoom_var = tk.StringVar(value="100%")
-        zoom_combo = ttk.Combobox(zoom_frame, textvariable=self.zoom_var,
-                             values=["90%", "100%"],
-                             state="readonly", width=7)
-        zoom_combo.pack(side=tk.LEFT, padx=2)
-        zoom_combo.bind("<<ComboboxSelected>>", self.on_zoom_changed)
-    
-        ttk.Button(zoom_frame, text="-", width=3, command=self.zoom_out).pack(side=tk.LEFT, padx=2)
-        ttk.Button(zoom_frame, text="+", width=3, command=self.zoom_in).pack(side=tk.LEFT, padx=2)
-    
-        info_frame = ttk.Frame(toolbar_frame)
-        info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-    
-        ttk.Label(info_frame, text="当前文件:").pack(side=tk.LEFT, padx=(0, 2))
-        self.file_path_label = ttk.Label(info_frame, text="未选择文件", foreground="red")
-        self.file_path_label.pack(side=tk.LEFT, padx=(0, 10))
-
-        ttk.Label(info_frame, text="文件大小:").pack(side=tk.LEFT, padx=(0, 2))
-        self.file_size_label = ttk.Label(info_frame, text="0字节")
-        self.file_size_label.pack(side=tk.LEFT)
-
         main_container = ttk.Frame(self.root)
         main_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-    
-        main_container.bind("<MouseWheel>", self.on_mousewheel)
-        main_container.bind("<Button-4>", self.on_mousewheel)
-        main_container.bind("<Button-5>", self.on_mousewheel)
 
         left_container = ttk.Frame(main_container)
         left_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         file_info_frame = ttk.LabelFrame(left_container, text="文件信息")
-        file_info_frame.pack(fill=tk.X, pady=(0, 5))
+        file_info_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(file_info_frame, text="当前文件:").grid(row=0, column=0, sticky=tk.W, padx=10, pady=10)
+        self.file_path_label = ttk.Label(file_info_frame, text="未选择文件", foreground="red")
+        self.file_path_label.grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+
+        ttk.Label(file_info_frame, text="文件大小:").grid(row=0, column=2, sticky=tk.W, padx=10, pady=10)
+        self.file_size_label = ttk.Label(file_info_frame, text="0 字节")
+        self.file_size_label.grid(row=0, column=3, sticky=tk.W, padx=5, pady=5)
 
         hex_frame = ttk.LabelFrame(left_container, text="十六进制视图")
-        hex_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 2))
+        hex_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
 
-        zoomed_height = int(25 * self.zoom_level)
-        self.hex_viewer = HexViewer(hex_frame, width=70, height=zoomed_height, app=self)
+        self.hex_viewer = HexViewer(hex_frame, width=70, height=12, app=self)
         self.hex_viewer.hex_text.bind("<Button-1>", self.on_hex_click)
         self.hex_viewer.ascii_text.bind("<Button-1>", self.on_ascii_click)
         self.hex_viewer.hex_text.bind("<Button-3>", self.hex_viewer.on_hex_right_click)
@@ -839,13 +791,13 @@ class BinaryEditorApp:
         v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.hex_viewer.set_scroll_command(v_scrollbar.set)
         results_frame = ttk.LabelFrame(left_container, text="匹配结果")
-        results_frame.pack(fill=tk.BOTH, expand=False, pady=(0, 2))
-        results_header_frame = ttk.Frame(results_frame)
-        results_header_frame.pack(fill=tk.X, padx=5, pady=2)
-        self.results_count_label = ttk.Label(results_header_frame, text="匹配数量:0")
-        self.results_count_label.pack(side=tk.LEFT, padx=5, pady=2)
+        results_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+
+        self.results_count_label = ttk.Label(results_frame, text="匹配数量:0")
+        self.results_count_label.pack(anchor=tk.W, padx=5, pady=2)
+
         columns = ("位置", "字节")
-        self.results_tree = ttk.Treeview(results_frame, columns=columns, show="headings", height=2)
+        self.results_tree = ttk.Treeview(results_frame, columns=columns, show="headings", height=4)
         self.results_tree.heading("位置", text="位置(可复制)")
         self.results_tree.column("位置", width=120, anchor=tk.CENTER)
         self.results_tree.heading("字节", text="字节")
@@ -862,15 +814,15 @@ class BinaryEditorApp:
         self.results_tree.bind("<ButtonRelease-1>", self.on_result_click)
 
         search_frame = ttk.LabelFrame(left_container, text="查找和替换")
-        search_frame.pack(fill=tk.BOTH, expand=False, pady=(0, 5))
+        search_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
 
         search_frame.grid_columnconfigure(1, weight=0)
         search_frame.grid_columnconfigure(2, weight=0)
         search_frame.grid_columnconfigure(3, weight=1)
-        search_frame.grid_rowconfigure(2, weight=0)
-        search_frame.grid_rowconfigure(3, weight=0)
-        search_frame.grid_rowconfigure(4, weight=0)
-        search_frame.grid_rowconfigure(5, weight=0)
+        search_frame.grid_rowconfigure(2, weight=1)
+        search_frame.grid_rowconfigure(3, weight=1)
+        search_frame.grid_rowconfigure(4, weight=1)
+        search_frame.grid_rowconfigure(5, weight=1)
 
         ttk.Label(search_frame, text="输入类型:").grid(row=1, column=0, sticky=tk.W, padx=10, pady=10)
         input_type_menu = ttk.Combobox(search_frame, textvariable=self.input_type_var,
@@ -938,22 +890,7 @@ class BinaryEditorApp:
 
         self.sidebar_frame = ttk.LabelFrame(main_container, text="字符串列表")
         self.sidebar_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=(5, 0), pady=0)
-        filter_frame = ttk.Frame(self.sidebar_frame)
-        filter_frame.pack(fill=tk.X, padx=5, pady=(5, 0))   
-        ttk.Label(filter_frame, text="过滤:").pack(side=tk.LEFT, padx=2)
-    
-        self.filter_var = tk.StringVar()
-        self.filter_entry = ttk.Entry(filter_frame, textvariable=self.filter_var)
-        self.filter_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
-        self.case_sensitive_var = tk.BooleanVar(value=True)
-        self.case_checkbox = ttk.Checkbutton(filter_frame, text="区分大小写", 
-                                        variable=self.case_sensitive_var,
-                                        command=self.on_filter_changed)
-        self.case_checkbox.pack(side=tk.LEFT, padx=5)
-        self.filter_var.trace_add('write', self.on_filter_changed)
-    
-        sidebar_controls = ttk.Frame(self.sidebar_frame)
-        sidebar_controls.pack(fill=tk.X, padx=5, pady=5)
+        
         sidebar_controls = ttk.Frame(self.sidebar_frame)
         sidebar_controls.pack(fill=tk.X, padx=5, pady=5)
         ttk.Label(sidebar_controls, text="模式:").pack(side=tk.LEFT, padx=2)
@@ -999,100 +936,6 @@ class BinaryEditorApp:
 
         self.find_mode = "text"
         self.update_input_fields_state()
-
-    def zoom_in(self):
-        current_idx = self.zoom_factors.index(self.zoom_level)
-        if current_idx < len(self.zoom_factors) - 1:
-            new_zoom = self.zoom_factors[current_idx + 1]
-            self.set_zoom(new_zoom)
-
-    def zoom_out(self):
-        current_idx = self.zoom_factors.index(self.zoom_level)
-        if current_idx > 0:
-            new_zoom = self.zoom_factors[current_idx - 1]
-            self.set_zoom(new_zoom)
-
-    def on_zoom_changed(self, event=None):
-        zoom_str = self.zoom_var.get()
-        zoom_map = {"90%": 0.9, "100%": 1.0}
-        if zoom_str in zoom_map:
-            self.set_zoom(zoom_map[zoom_str])
-
-    def set_zoom(self, zoom_factor):
-        self.zoom_level = zoom_factor
-        self.zoom_var.set(f"{int(zoom_factor * 100)}%")    
-        new_font_size = int(self.base_font_size * zoom_factor)
-        font_name = "SimSun"  
-        new_font = f"{font_name} {new_font_size}"  
-        self.update_all_fonts(new_font)   
-        self.adjust_window_height()   
-        if hasattr(self, 'hex_viewer'):
-            self.update_hex_viewer_height()   
-        self.update_status(f"已缩放至 {int(zoom_factor * 100)}%")
-
-    def update_hex_viewer_height(self):
-        if not hasattr(self, 'hex_viewer'):
-            return  
-        hex_frame = self.hex_viewer.master
-        hex_frame.update_idletasks()
-        frame_height = hex_frame.winfo_height()   
-        if frame_height <= 0:
-            return  
-        font = tkfont.Font(font=self.hex_viewer.hex_text.cget("font"))
-        line_height = font.metrics("linespace")   
-        if line_height <= 0:
-            line_height = 20   
-        max_lines = max(10, frame_height // line_height - 2)
-        self.hex_viewer.height = max_lines
-        self.hex_viewer.update_view()
-
-    def update_all_fonts(self, font):
-        self.root.option_add("*Font", font)
-        widgets_to_update = [
-            self.file_path_label, self.file_size_label,
-            self.status_bar, self.find_text, self.replace_text
-        ]    
-        for widget in widgets_to_update:
-            try:
-                if hasattr(widget, 'config'):
-                    widget.config(font=font)
-            except:
-                pass  
-        entry_widgets = [self.find_hex_entry, self.replace_hex_entry]
-        for entry in entry_widgets:
-            try:
-                entry.config(font=font)
-            except:
-                pass  
-        try:
-            style = ttk.Style()
-            style.configure("Treeview", font=font)
-            style.configure("Treeview.Heading", font=font)
-        except:
-            pass   
-        if hasattr(self, 'hex_viewer'):
-            self.hex_viewer.set_font(font)
-
-    def adjust_window_height(self):
-        if not self.root.winfo_exists():
-            return  
-        current_width = self.root.winfo_width()   
-        base_height = 1000
-        min_height = 600  
-        scaled_height = int(base_height * self.scale_factor * self.zoom_level)
-        scaled_height = max(int(min_height * self.scale_factor), scaled_height)   
-        self.root.geometry(f"{current_width}x{scaled_height}")  
-        self.root.minsize(
-            int(800 * self.scale_factor * 0.8),
-            int(min_height * self.scale_factor * 0.8)
-        )
-
-    def on_mousewheel(self, event):
-        if event.num == 4 or (hasattr(event, 'delta') and event.delta > 0):
-            self.hex_viewer._on_mousewheel(event)
-        else:
-            self.hex_viewer._on_mousewheel(event)
-        return "break"
 
     def on_string_selected(self, event):
         selected = self.string_tree.selection()
@@ -1257,9 +1100,142 @@ class BinaryEditorApp:
         self.context_menu.add_command(label="插入字节", command=self.insert_bytes)
         self.context_menu.add_command(label="删除字节", command=self.delete_bytes)
         self.context_menu.add_separator()
+        self.context_menu.add_command(label="导出范围字节为纯数字", command=self.export_range_bytes)
         self.results_tree.bind("<Button-3>", self.show_context_menu)
         self.results_tree.bind("<Control-c>", self.copy_position_event)
 
+    def export_range_bytes(self):
+        if not self.file_data:
+            messagebox.showwarning("警告", "请先打开文件")
+            return
+            
+        export_window = tk.Toplevel(self.root)
+        export_window.title("导出字节范围")
+        export_window.geometry("400x200")
+        export_window.resizable(False, False)
+        export_window.transient(self.root)
+        export_window.grab_set()
+    
+        export_window.geometry(f"+{self.root.winfo_rootx()+50}+{self.root.winfo_rooty()+50}")
+    
+        input_frame = ttk.Frame(export_window, padding="20")
+        input_frame.pack(fill=tk.BOTH, expand=True)
+    
+        ttk.Label(input_frame, text="起始地址(16进制):").grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
+        start_var = tk.StringVar(value="0x00000000")
+        start_entry = ttk.Entry(input_frame, textvariable=start_var, width=20)
+        start_entry.grid(row=0, column=1, sticky=tk.W, pady=(0, 5), padx=(5, 0))
+      
+        ttk.Label(input_frame, text="结束地址(16进制):").grid(row=1, column=0, sticky=tk.W, pady=(0, 5))
+        end_var = tk.StringVar(value=f"0x{len(self.file_data)-1:08X}")
+        end_entry = ttk.Entry(input_frame, textvariable=end_var, width=20)
+        end_entry.grid(row=1, column=1, sticky=tk.W, pady=(0, 5), padx=(5, 0))
+    
+        ttk.Label(input_frame, text="示例:0x00000100到0x00000200", 
+             foreground="gray", font=("SimSun", 9)).grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=(0, 15))
+    
+        button_frame = ttk.Frame(input_frame)
+        button_frame.grid(row=3, column=0, columnspan=2, pady=(10, 0))
+    
+        def validate_and_export():
+            try:
+                start_str = start_var.get().strip()
+                end_str = end_var.get().strip()
+            
+                if start_str.lower().startswith("0x"):
+                    start_str = start_str[2:]
+                if end_str.lower().startswith("0x"):
+                    end_str = end_str[2:]
+            
+                start_addr = int(start_str, 16)
+                end_addr = int(end_str, 16)
+            
+                if start_addr < 0 or end_addr >= len(self.file_data):
+                    messagebox.showerror("错误", f"地址范围无效!文件大小:0x{len(self.file_data):08X}")
+                    return
+                    
+                if start_addr > end_addr:
+                    messagebox.showerror("错误", "起始地址不能大于结束地址!")
+                    return
+                    
+                byte_range = self.file_data[start_addr:end_addr+1]
+                
+                if not byte_range:
+                    messagebox.showwarning("警告", "选择的范围内没有字节数据")
+                    return
+            
+                result = "".join([f"{b:02X}" for b in byte_range])
+            
+                result_window = tk.Toplevel(export_window)
+                result_window.title("导出结果 - 纯十六进制数字")
+                result_window.geometry("800x500")
+            
+                info_text = f"地址范围:0x{start_addr:08X}-0x{end_addr:08X}\n"
+                info_text += f"字节数量:{len(byte_range)}(0x{len(byte_range):X})\n"
+                info_text += f"输出字符数:{len(result)}\n"
+                info_text += "-" * 60
+            
+                ttk.Label(result_window, text=info_text, justify=tk.LEFT).pack(anchor=tk.W, padx=10, pady=10)
+            
+                text_frame = ttk.Frame(result_window)
+                text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+            
+                result_text = tk.Text(text_frame, wrap=tk.NONE, font=("Consolas", 10))
+                result_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            
+                scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=result_text.yview)
+                scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+                result_text.config(yscrollcommand=scrollbar.set)
+            
+                result_text.insert("1.0", result)
+                result_text.config(state=tk.NORMAL)
+            
+                button_frame2 = ttk.Frame(result_window)
+                button_frame2.pack(fill=tk.X, padx=10, pady=(0, 10))
+            
+                def copy_to_clipboard():
+                    self.root.clipboard_clear()
+                    self.root.clipboard_append(result)
+                    messagebox.showinfo("成功", "已复制到剪贴板！")
+                
+                def save_to_file():
+                    file_path = filedialog.asksaveasfilename(
+                        title="保存导出结果",
+                        defaultextension=".txt",
+                        filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")]
+                    )
+                    
+                    if file_path:
+                        try:
+                            with open(file_path, "w", encoding="utf-8") as f:
+                                f.write(f"地址范围:0x{start_addr:08X}-0x{end_addr:08X}\n")
+                                f.write(f"字节数量:{len(byte_range)}(0x{len(byte_range):X})\n")
+                                f.write(f"生成时间:{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                                f.write("-" * 60 + "\n")
+                                f.write(result)
+                                messagebox.showinfo("成功", f"已保存到:{file_path}")
+                        except Exception as e:
+                            messagebox.showerror("错误", f"保存失败:{str(e)}")
+            
+                ttk.Button(button_frame2, text="复制到剪贴板", command=copy_to_clipboard).pack(side=tk.LEFT, padx=5)
+                ttk.Button(button_frame2, text="保存到文件", command=save_to_file).pack(side=tk.LEFT, padx=5)
+                ttk.Button(button_frame2, text="关闭", command=result_window.destroy).pack(side=tk.RIGHT, padx=5)
+            
+                self.update_status(f"已导出0x{start_addr:08X}-0x{end_addr:08X}的纯十六进制数字({len(byte_range)} 字节)")
+                
+            except ValueError as e:
+                messagebox.showerror("错误", f"地址格式错误!请使用16进制格式,如:0x00000100\n错误:{str(e)}")
+            except Exception as e:
+                messagebox.showerror("错误", f"导出失败:{str(e)}")
+    
+        def cancel_export():
+            export_window.destroy()
+    
+        ttk.Button(button_frame, text="导出纯十六进制数字", command=validate_and_export, width=20).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="取消", command=cancel_export, width=15).pack(side=tk.LEFT, padx=5)
+    
+        start_entry.focus_set()
+        start_entry.select_range(0, tk.END)
     def insert_bytes(self):
         if not hasattr(self.hex_viewer, 'right_click_pos') or self.hex_viewer.right_click_pos is None:
             return
@@ -1624,45 +1600,9 @@ class BinaryEditorApp:
             messagebox.showerror("错误", f"无法保存文件:{str(e)}")
             self.update_status(f"错误:无法保存文件-{str(e)}")
 
-    def on_filter_changed(self, *args):
-        filter_text = self.filter_var.get().strip()
-    
-        for item in self.string_tree.get_children():
-            self.string_tree.delete(item)
-    
-        if filter_text:
-            if not self.case_sensitive_var.get():
-                filter_text = filter_text.lower()
-        
-            for i, entry in enumerate(self.string_entries):
-                text_to_compare = entry["text"] if self.case_sensitive_var.get() else entry["text"].lower()
-            
-                if filter_text in text_to_compare:
-                    display_text = entry["text"]
-                    if len(display_text) > 20:
-                        display_text = display_text[:17] + "..."
-                
-                    self.string_tree.insert("", tk.END, values=(
-                        i + 1,
-                        f"0x{entry['address']:08X}",
-                        entry["length"],
-                        display_text
-                    ))
-        else:
-            for i, entry in enumerate(self.string_entries):
-                display_text = entry["text"]
-                if len(display_text) > 20:
-                    display_text = display_text[:17] + "..."
-            
-                self.string_tree.insert("", tk.END, values=(
-                    i + 1,
-                    f"0x{entry['address']:08X}",
-                    entry["length"],
-                    display_text
-                ))
     def show_about(self):
         about_text = """汉化辅助编辑器
-版本7.4    [B站偷吃布丁的涅普缇努制作,第四梦境协助修改]
+版本7.3   [B站偷吃布丁的涅普缇努制作,第四梦境协助修改]
 
 一个简单的二进制文件编辑器
 
@@ -2258,7 +2198,7 @@ class HexViewer:
         self.bytes_per_line = 16
         self.current_encoding = 'utf-8'
         self.scroll_command = None
-        self.bytes_per_line_options = [16, 32, 48]
+        self.bytes_per_line_options = [8, 16, 32, 48]
         self.byte_colors = {
             0x0A: 'blue',     
             0x0D: 'purple',   
@@ -2280,8 +2220,7 @@ class HexViewer:
         self.non_printable_color = 'purple'
         
         self.data = bytearray()
-        self.base_font = ("Consolas", 9)
-        self.current_font = self.base_font
+        
         self.create_widgets()
 
         self.start_address = 0
@@ -2309,33 +2248,11 @@ class HexViewer:
             48: "full"
         }
         self.initial_window_size = None
-
-    def get_available_lines(self):
-        if not self.master.winfo_exists():
-            return self.initial_height  
-        self.master.update_idletasks()
-        frame_height = self.master.winfo_height()  
-        if frame_height <= 0:
-            return self.initial_height   
-        font = tkfont.Font(font=self.hex_text.cget("font"))
-        line_height = font.metrics("linespace")   
-        if line_height <= 0:
-            line_height = 20   
-        available_lines = max(10, (frame_height // line_height) - 2)
-        return available_lines
-
     def set_scroll_command(self, command):
         self.scroll_command = command
         self.hex_text.config(yscrollcommand=command)
         self.address_text.config(yscrollcommand=command)
         self.ascii_text.config(yscrollcommand=command)
-
-    def set_font(self, font):
-        self.current_font = font
-        self.address_text.config(font=font)
-        self.hex_text.config(font=font)
-        self.ascii_text.config(font=font)
-        self.update_view()
 
     def set_data(self, data):
         self.data = data
@@ -2406,22 +2323,33 @@ class HexViewer:
 
     def adjust_window_width(self, bytes_per_line):
         if not self.app or not hasattr(self.app, 'sidebar_frame'):
-            return   
+            return
+    
         current_window_width = self.app.root.winfo_width()
-        current_window_height = self.app.root.winfo_height()  
+        current_window_height = self.app.root.winfo_height()
+    
         screen_width = self.app.root.winfo_screenwidth()
-        sidebar_width = 300  
+    
+        sidebar_width = 300
+    
         if bytes_per_line == 48:
             left_width = screen_width - sidebar_width - 100
         elif bytes_per_line == 32:
             left_width = int(screen_width * 2 / 3)
+        elif bytes_per_line == 16:
+            left_width = 1000
         else:
-            left_width = 1000  
-        left_width = max(left_width, 600)   
+            left_width = 800
+    
+        left_width = max(left_width, 600)
+    
         new_window_width = left_width + sidebar_width + 50
-        self.app.root.geometry(f"{new_window_width}x{current_window_height}")   
+    
+        self.app.root.geometry(f"{new_window_width}x{current_window_height}")
+    
         hex_width = bytes_per_line * 3
-        self.hex_text.config(width=hex_width)   
+        self.hex_text.config(width=hex_width)
+    
         self.app.update_status(f"已切换到每行{bytes_per_line}字节模式，十六进制视图宽度已调整")
 
     def _on_scrollbar(self, *args):
@@ -2443,17 +2371,8 @@ class HexViewer:
         self.hex_text.delete(1.0, tk.END)
         self.ascii_text.delete(1.0, tk.END)
 
-        actual_height = self.get_available_lines()
-        if actual_height > 0:
-            self.current_height = actual_height
-    
-        max_lines = min(self.current_height, 
-                       (len(self.data) - self.start_address + self.bytes_per_line - 1) // self.bytes_per_line)
+        max_lines = min(self.height, (len(self.data) - self.start_address + self.bytes_per_line - 1) // self.bytes_per_line)
 
-        actual_data_lines = (len(self.data) + self.bytes_per_line - 1) // self.bytes_per_line
-        if actual_data_lines < max_lines:
-            max_lines = actual_data_lines
-    
         for i in range(max_lines):
             line_addr = self.start_address + i * self.bytes_per_line
             self.address_text.insert(tk.END, f"{line_addr:08X}\n")
@@ -2509,7 +2428,7 @@ class HexViewer:
                     if is_non_printable:
                         self.ascii_text.tag_add("non_printable", 
                             f"{i+1}.{j}", f"{i+1}.{j}+1c")
- 
+
                 if is_highlighted:
                     hex_start = f"{i+1}.{j*3}"
                     hex_end = f"{i+1}.{j*3+2}"
@@ -2528,7 +2447,7 @@ class HexViewer:
         total_lines = (len(self.data) + self.bytes_per_line - 1) // self.bytes_per_line
         if total_lines > 0:
             first_line = self.start_address // self.bytes_per_line
-            visible_lines = self.current_height
+            visible_lines = self.height
             self.vscrollbar.set(first_line / total_lines, (first_line + visible_lines) / total_lines)
 
     def _on_scroll(self, *args):
@@ -2571,7 +2490,12 @@ class HexViewer:
         self.context_menu.add_command(label="插入字节", command=self.insert_bytes)
         self.context_menu.add_command(label="删除字节", command=self.delete_bytes)
         self.context_menu.add_separator()
-        
+        self.context_menu.add_command(label="导出字节序列为纯数字", command=self.export_range_bytes)
+
+    def export_range_bytes(self):
+        if self.app:
+            self.app.export_range_bytes() 
+
     def on_hex_right_click(self, event):
         if not hasattr(self, 'data') or not self.data:
             return
@@ -2696,13 +2620,10 @@ def bytes_to_hex(byte_data):
 
 if __name__ == "__main__":
     try:
-        tkinterdnd2 = __import__('tkinterdnd2')
-        TkinterDnD = getattr(tkinterdnd2, 'TkinterDnD')
+        from tkinterdnd2 import TkinterDnD
         root = TkinterDnD.Tk()
     except ImportError:
-        import tkinter as tk
         root = tk.Tk()
         print("警告:tkinterdnd2未安装,拖拽功能将不可用")
-    
     app = BinaryEditorApp(root)
     root.mainloop()

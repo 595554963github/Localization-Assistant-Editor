@@ -73,7 +73,6 @@ class BinaryEditorApp:
         self.current_match_index = -1
         self.current_find_text = "" 
         self.find_mode = "text"
-
         self.replace_buttons_disabled = False
         self.replace_buttons_clicked = False 
 
@@ -537,10 +536,12 @@ class BinaryEditorApp:
             messagebox.showwarning("警告", "请先打开文件")
             return
         scan_mode = self.scan_mode_var.get()
+        self.current_scan_mode = scan_mode
         self.on_encoding_changed()
         mapping_data = self.load_mapping_from_file(scan_mode)
         
         if mapping_data and mapping_data.get('strings'):
+            self.current_mapping_data = mapping_data
             self.load_strings_from_mapping(mapping_data)
             self.update_status(f"已从本地映射加载{len(self.string_entries)}个字符串")
             return
@@ -644,24 +645,42 @@ class BinaryEditorApp:
         for item in self.string_tree.get_children():
             self.string_tree.delete(item)
     
+        if hasattr(self, 'hex_viewer'):
+            self.hex_viewer.highlight_start = -1
+            self.hex_viewer.highlight_end = -1
+            self.hex_viewer.update_view()
+    
+        self.current_string_index = -1
+    
         strings = mapping_data.get('strings', [])
         self.current_mapping_data = mapping_data
         self.current_segments = []
     
+        self.string_tree.configure(yscrollcommand=lambda *args: None)
+    
         for str_info in strings:
             original_text = str_info.get('original_text', '')
             translated_text = str_info.get('translated_text', '')
+        
             display_text = translated_text if translated_text else original_text
+            bytes_hex = str_info.get('bytes_hex', '')
+            if bytes_hex:
+                try:
+                    bytes_data = bytes.fromhex(bytes_hex.replace(' ', ''))
+                except:
+                    bytes_data = b''
+            else:
+                bytes_data = b''
         
             segment = {
-            "id": str_info['id'],
-            "start": str_info['address'],
-            "length": str_info['length'],
-            "text": display_text,
-            "original_text": original_text,
-            "translated_text": translated_text,
-            "bytes": bytes.fromhex(str_info['bytes_hex'].replace(' ', '')) if str_info.get('bytes_hex') else b'',
-            "encoding": str_info.get('encoding', 'unknown')
+                "id": str_info['id'],
+                "address": str_info['address'],
+                "length": str_info['length'],
+                "text": display_text,
+                "original_text": original_text,
+                "translated_text": translated_text,
+                 "bytes": bytes_data,
+                "encoding": str_info.get('encoding', 'unknown')
             }
         
             self.string_entries.append(segment)
@@ -672,16 +691,34 @@ class BinaryEditorApp:
                 truncated_display = truncated_display[:17] + "..."
         
             self.string_tree.insert("", tk.END, values=(
-            str_info['id'],
-            str_info['address_hex'],
-            str_info['length'],
-            truncated_display
+                str_info['id'],
+                str_info.get('address_hex', f"0x{str_info['address']:08X}"),
+                str_info['length'],
+                truncated_display
             ))
+    
+        tree_scrollbar = None
+        for child in self.sidebar_frame.winfo_children():
+            if isinstance(child, ttk.Scrollbar):
+                tree_scrollbar = child
+                break
+    
+        if tree_scrollbar:
+            self.string_tree.configure(yscrollcommand=tree_scrollbar.set)
     
         if self.string_tree.get_children():
             self.string_tree.selection_set(self.string_tree.get_children()[0])
+            self.current_string_index = 0
     
-        self.update_status(f"已加载{len(self.string_entries)}个字符串(来自映射文件)")
+        translated_count = sum(1 for e in self.string_entries if e.get('translated_text'))
+        untranslated_count = len(self.string_entries) - translated_count
+    
+        if translated_count > 0:
+            self.update_status(f"已加载{len(self.string_entries)}个字符串(已翻译:{translated_count},未翻译:{untranslated_count})")
+        else:
+            self.update_status(f"已加载{len(self.string_entries)}个字符串")
+    
+        self.root.update_idletasks()
 
     def on_scan_mode_changed(self, event=None):
         scan_mode = self.scan_mode_var.get()
@@ -827,11 +864,13 @@ class BinaryEditorApp:
             self.history_index = 0
             self.current_mapping_data = {}
             self.current_segments = []
-            self.pending_changes = False
             self.current_scan_mode = None
+            self.pending_changes = False
             self.string_entries = []
+            self.current_string_index = -1
             for item in self.string_tree.get_children():
                 self.string_tree.delete(item)
+            self.root.after(50, self.auto_load_mapping)
             self.update_status(f"已加载文件:{os.path.basename(file_path)}")
         except Exception as e:
             messagebox.showerror("错误", f"无法打开文件:{str(e)}")
@@ -1674,11 +1713,53 @@ class BinaryEditorApp:
 
             self.history = [copy.copy(self.file_data)]
             self.history_index = 0
-
+            self.current_mapping_data = {}
+            self.current_segments = []
+            self.current_scan_mode = None
+            self.pending_changes = False
+            self.string_entries = []
+            for item in self.string_tree.get_children():
+                self.string_tree.delete(item)
+            self.auto_load_mapping()
             self.update_status(f"已加载文件:{os.path.basename(file_path)}")
         except Exception as e:
             messagebox.showerror("错误", f"无法打开文件:{str(e)}")
             self.update_status(f"错误:无法打开文件-{str(e)}")
+    def auto_load_mapping(self):
+        if not self.file_path:
+            return
+    
+        scan_modes = ["ansi", "unicode_le", "unicode_be"]
+    
+        for scan_mode in scan_modes:
+            mapping_file = self.get_mapping_file_path(scan_mode)
+            if mapping_file and os.path.exists(mapping_file):
+                try:
+                    import json
+                    with open(mapping_file, 'r', encoding='utf-8') as f:
+                        mapping_data = json.load(f)
+                
+                    if mapping_data.get('file_size') == len(self.file_data):
+                        self.current_scan_mode = scan_mode
+                        self.scan_mode_var.set(scan_mode)
+                    
+                        if scan_mode == "ansi":
+                            encoding = mapping_data.get('encoding', 'utf-8')
+                            self.encoding_var.set(encoding)
+                        elif scan_mode == "unicode_le":
+                            self.encoding_var.set("utf-16le")
+                        elif scan_mode == "unicode_be":
+                            self.encoding_var.set("utf-16be")
+                    
+                        self.root.after(10, lambda: self.load_strings_from_mapping(mapping_data))
+                        self.update_status(f"正在加载映射:{os.path.basename(mapping_file)}")
+                        return
+                    else:
+                        self.update_status(f"映射文件大小不匹配,跳过:{os.path.basename(mapping_file)}")
+                except Exception as e:
+                    self.update_status(f"加载映射失败:{os.path.basename(mapping_file)} - {str(e)}")
+    
+        self.update_status("未找到匹配的本地映射文件,请点击扫描按钮")
 
     def save_file_as(self):
         if not self.file_data:
@@ -1737,6 +1818,11 @@ class BinaryEditorApp:
                     entry["length"],
                     display_text
                 ))
+
+    def reload_current_mapping(self):
+        if self.current_mapping_data:
+            self.load_strings_from_mapping(self.current_mapping_data)
+
     def show_about(self):
         about_text = """汉化辅助编辑器
 版本7.5    [B站偷吃布丁的涅普缇努制作,第四梦境协助修改]

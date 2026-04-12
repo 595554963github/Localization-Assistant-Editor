@@ -1417,10 +1417,6 @@ class BinaryEditorApp:
     def create_context_menu(self):
         self.context_menu = tk.Menu(self.root, tearoff=0)
         self.context_menu.add_command(label="复制位置", command=self.copy_position)
-        self.context_menu.add_separator()
-        self.context_menu.add_command(label="插入字节", command=self.insert_bytes)
-        self.context_menu.add_command(label="删除字节", command=self.delete_bytes)
-        self.context_menu.add_separator()
         self.results_tree.bind("<Button-3>", self.show_context_menu)
         self.results_tree.bind("<Control-c>", self.copy_position_event)
 
@@ -1468,6 +1464,168 @@ class BinaryEditorApp:
         self.hex_viewer.set_data(self.file_data)
         self.save_history_state()
         self.update_status(f"已从位置0x{pos:08X}删除了{count}个字节")
+
+    def export_range_bytes(self):
+        if not self.file_data:
+            messagebox.showwarning("警告", "请先打开文件")
+            return
+
+        export_window = tk.Toplevel(self.root)
+        export_window.title("导出字节范围")
+        export_window.geometry("500x350")
+        export_window.minsize(450, 300)
+        export_window.transient(self.root)
+        export_window.grab_set()
+        export_window.geometry(f"+{self.root.winfo_rootx()+50}+{self.root.winfo_rooty()+50}")
+
+        main_frame = ttk.Frame(export_window, padding="15")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        input_frame = ttk.LabelFrame(main_frame, text="地址范围", padding="10")
+        input_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(input_frame, text="起始地址(16进制):").grid(row=0, column=0, sticky=tk.W, pady=5)
+        start_var = tk.StringVar(value="0x00000000")
+        start_entry = ttk.Entry(input_frame, textvariable=start_var, width=18)
+        start_entry.grid(row=0, column=1, sticky=tk.W, padx=(10, 0), pady=5)
+
+        ttk.Label(input_frame, text="结束地址(16进制):").grid(row=1, column=0, sticky=tk.W, pady=5)
+        end_var = tk.StringVar(value=f"0x{len(self.file_data)-1:08X}")
+        end_entry = ttk.Entry(input_frame, textvariable=end_var, width=18)
+        end_entry.grid(row=1, column=1, sticky=tk.W, padx=(10, 0), pady=5)
+
+        ttk.Label(input_frame, text="示例:0x00000100 到 0x00000200", 
+             foreground="gray", font=("SimSun", 9)).grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=(5, 0))
+
+        format_frame = ttk.LabelFrame(main_frame, text="导出格式", padding="10")
+        format_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(format_frame, text="选择格式:").pack(anchor=tk.W, pady=(0, 5))
+        format_var = tk.StringVar(value="纯数字(52494646)")
+        format_combo = ttk.Combobox(format_frame, textvariable=format_var,
+                                 values=["纯数字(52494646)", "1字节(0x52,0x49,0x46,0x46)", "4字节小端(0x52494646)"],
+                                 state="readonly", width=30)
+        format_combo.pack(anchor=tk.W, fill=tk.X)
+
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+
+        def validate_and_export():
+            try:
+                start_str = start_var.get().strip()
+                end_str = end_var.get().strip()
+         
+                if start_str.lower().startswith("0x"):
+                    start_str = start_str[2:]
+                if end_str.lower().startswith("0x"):
+                    end_str = end_str[2:]
+            
+                start_addr = int(start_str, 16)
+                end_addr = int(end_str, 16)
+        
+                if start_addr < 0 or end_addr >= len(self.file_data):
+                    messagebox.showerror("错误", f"地址范围无效!文件大小:0x{len(self.file_data):08X}")
+                    return
+                if start_addr > end_addr:
+                    messagebox.showerror("错误", "起始地址不能大于结束地址!")
+                    return
+        
+                byte_range = self.file_data[start_addr:end_addr+1]
+                if not byte_range:
+                    messagebox.showwarning("警告", "选择的范围内没有字节数据")
+                    return
+            
+                format_type = format_var.get()
+            
+                if format_type == "纯数字(52494646)":
+                    result = "".join([f"{b:02X}" for b in byte_range])
+                elif format_type == "1字节(0x52,0x49,0x46,0x46)":
+                    result = ", ".join([f"0x{b:02X}" for b in byte_range])
+                elif format_type == "4字节小端(0x52494646)":
+                    padded = byte_range.copy()
+                    while len(padded) % 4 != 0:
+                        padded.append(0x00)
+                    groups = []
+                    for i in range(0, len(padded), 4):
+                        group = padded[i:i+4]
+                        value = group[0] | (group[1] << 8) | (group[2] << 16) | (group[3] << 24)
+                        groups.append(f"0x{value:08X}")
+                    result = ", ".join(groups)
+                else:
+                    result = "".join([f"{b:02X}" for b in byte_range])
+
+                result_window = tk.Toplevel(export_window)
+                result_window.title("导出结果")
+                result_window.geometry("800x550")
+                result_window.minsize(600, 550)
+        
+                info_text = f"地址范围:0x{start_addr:08X} - 0x{end_addr:08X}\n"
+                info_text += f"字节数量:{len(byte_range)} (0x{len(byte_range):X})\n"
+                info_text += f"导出格式:{format_type}\n"
+                info_text += f"输出字符数:{len(result)}\n"
+                info_text += "-" * 60
+            
+                info_label = ttk.Label(result_window, text=info_text, justify=tk.LEFT)
+                info_label.pack(anchor=tk.W, padx=10, pady=10)
+        
+                text_frame = ttk.Frame(result_window)
+                text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        
+                result_text = tk.Text(text_frame, wrap=tk.NONE, font=("Consolas", 10))
+                result_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+                h_scrollbar = ttk.Scrollbar(text_frame, orient=tk.HORIZONTAL, command=result_text.xview)
+                v_scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=result_text.yview)
+                h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+                v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+                result_text.config(xscrollcommand=h_scrollbar.set, yscrollcommand=v_scrollbar.set)
+            
+                result_text.insert("1.0", result)
+                result_text.config(state=tk.NORMAL)
+        
+                button_frame2 = ttk.Frame(result_window)
+                button_frame2.pack(fill=tk.X, padx=10, pady=(0, 10))
+        
+                def copy_to_clipboard():
+                    self.root.clipboard_clear()
+                    self.root.clipboard_append(result)
+                    messagebox.showinfo("成功", "已复制到剪贴板!")
+        
+                def save_to_file():
+                    file_path = filedialog.asksaveasfilename(
+                        title="保存导出结果",
+                        defaultextension=".txt",
+                        filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")]
+                    )
+                    if file_path:
+                        try:
+                            with open(file_path, "w", encoding="utf-8") as f:
+                                f.write(f"地址范围:0x{start_addr:08X} - 0x{end_addr:08X}\n")
+                                f.write(f"字节数量:{len(byte_range)} (0x{len(byte_range):X})\n")
+                                f.write(f"导出格式:{format_type}\n")
+                                f.write(f"生成时间:{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                                f.write("-" * 60 + "\n")
+                                f.write(result)
+                                messagebox.showinfo("成功", f"已保存到:{file_path}")
+                        except Exception as e:
+                            messagebox.showerror("错误", f"保存失败:{str(e)}")
+        
+                ttk.Button(button_frame2, text="复制到剪贴板", command=copy_to_clipboard).pack(side=tk.LEFT, padx=5)
+                ttk.Button(button_frame2, text="保存到文件", command=save_to_file).pack(side=tk.LEFT, padx=5)
+                ttk.Button(button_frame2, text="关闭", command=result_window.destroy).pack(side=tk.RIGHT, padx=5)
+        
+                self.update_status(f"已导出0x{start_addr:08X}-0x{end_addr:08X} ({format_type})")
+        
+            except ValueError as e:
+                messagebox.showerror("错误", f"地址格式错误!请使用16进制格式,如:0x00000100\n错误:{str(e)}")
+            except Exception as e:
+                messagebox.showerror("错误", f"导出失败:{str(e)}")
+
+        export_btn = ttk.Button(button_frame, text="导出", command=validate_and_export, width=15)
+        export_btn.pack(side=tk.LEFT, padx=5)
+    
+        start_entry.focus_set()
+        start_entry.select_range(0, tk.END)
 
     def show_context_menu(self, event):
         item = self.results_tree.identify_row(event.y)
@@ -1825,7 +1983,7 @@ class BinaryEditorApp:
 
     def show_about(self):
         about_text = """汉化辅助编辑器
-版本7.5    [B站偷吃布丁的涅普缇努制作,第四梦境协助修改]
+版本7.6    [B站偷吃布丁的涅普缇努制作,第四梦境协助修改]
 
 一个简单的二进制文件编辑器
 
@@ -2758,6 +2916,7 @@ class HexViewer:
         self.context_menu.add_command(label="修改为空格(0x20)", command=self.convert_to_space)
         self.context_menu.add_command(label="插入字节", command=self.insert_bytes)
         self.context_menu.add_command(label="删除字节", command=self.delete_bytes)
+        self.context_menu.add_command(label="导出指定范围字节", command=self.export_range_bytes)
         self.context_menu.add_separator()
     def on_hex_right_click(self, event):
         if not hasattr(self, 'data') or not self.data:
@@ -2815,7 +2974,9 @@ class HexViewer:
         self.highlight_start = -1
         self.highlight_end = -1
         self.update_view()
-
+    def export_range_bytes(self):
+        if self.app:
+            self.app.export_range_bytes()
     def convert_to_space(self):
         if self.right_click_pos is not None:
             self.data[self.right_click_pos] = 0x20

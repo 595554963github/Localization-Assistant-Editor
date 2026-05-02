@@ -12,50 +12,209 @@ class ToolTip:
         self.widget = widget
         self.text = text
         self.tip_window = None
-        self.widget.bind('<Enter>', self.show_tip)
+        self.delay_id = None
+        self.widget.bind('<Enter>', self.on_enter)
         self.widget.bind('<Leave>', self.hide_tip)
-    
+
+    def on_enter(self, event=None):
+        if self.delay_id:
+            self.widget.after_cancel(self.delay_id)
+        self.delay_id = self.widget.after(500, self.show_tip)
+
     def show_tip(self, event=None):
-        x, y, _, _ = self.widget.bbox("insert")
+        self.delay_id = None
+        if self.tip_window:
+            return
+        
+        try:
+            x, y, _, _ = self.widget.bbox("insert")
+        except:
+            x, y = 0, 0
+        
         x += self.widget.winfo_rootx() + 25
         y += self.widget.winfo_rooty() + 25
-        
+
         self.tip_window = tk.Toplevel(self.widget)
         self.tip_window.wm_overrideredirect(True)
         self.tip_window.wm_geometry(f"+{x}+{y}")
-        
+        self.tip_window.configure(bg=MODERN_COLORS['bg_tertiary'])
+        self.tip_window.attributes('-topmost', True)
+
         label = tk.Label(self.tip_window, text=self.text, justify=tk.LEFT,
-                         background="#ffffe0", relief=tk.SOLID, borderwidth=1,
-                         font=("SimSun", 10))
+                         background=MODERN_COLORS['bg_tertiary'], foreground=MODERN_COLORS['text_primary'], 
+                         relief=tk.SOLID, borderwidth=1,
+                         font=("Microsoft YaHei", 10), padx=8, pady=5)
         label.pack()
-    
+
     def hide_tip(self, event=None):
+        if self.delay_id:
+            self.widget.after_cancel(self.delay_id)
+            self.delay_id = None
         if self.tip_window:
             self.tip_window.destroy()
             self.tip_window = None
 
+MODERN_COLORS_DARK = {
+    'bg_primary': '#1e1e1e',
+    'bg_secondary': '#252526',
+    'bg_tertiary': '#2d2d30',
+    'bg_hover': '#3e3e42',
+    'bg_active': '#505050',
+    'text_primary': '#e4e4e4',
+    'text_secondary': '#a0a0a0',
+    'accent_blue': '#569cd6',
+    'accent_blue_hover': '#67afec',
+    'accent_green': '#4ec9b0',
+    'accent_orange': '#ce9178',
+    'accent_yellow': '#dcdcaa',
+    'accent_purple': '#c586c0',
+    'border': '#3c3c3c',
+    'highlight': '#264f78',
+    'selection': '#094771',
+    'error': '#f14c4c',
+    'success': '#89d185',
+    'warning': '#cca700',
+}
+
+MODERN_COLORS_LIGHT = {
+    'bg_primary': '#ffffff',
+    'bg_secondary': '#f5f5f5',
+    'bg_tertiary': '#e8e8e8',
+    'bg_hover': '#d3d3d3',
+    'bg_active': '#b8b8b8',
+    'text_primary': '#1e1e1e',
+    'text_secondary': '#666666',
+    'accent_blue': '#007acc',
+    'accent_blue_hover': '#1a8ad6',
+    'accent_green': '#00b894',
+    'accent_orange': '#e17055',
+    'accent_yellow': '#fdcb6e',
+    'accent_purple': '#a29bfe',
+    'border': '#d0d0d0',
+    'highlight': '#7eb8da',
+    'selection': '#87ceeb',
+    'error': '#dc3545',
+    'success': '#28a745',
+    'warning': '#ffc107',
+}
+
+MODERN_COLORS = MODERN_COLORS_DARK
+CURRENT_THEME = 'dark'
+
+STYLE_CONFIG = {
+    'frame_padding': 8,
+    'section_spacing': 10,
+    'button_padding': 6,
+    'entry_padding': 5,
+    'border_radius': 4,
+    'shadow_depth': 2,
+}
+
+class ModernLabelFrame(tk.Frame):
+    def __init__(self, master, text="", bg=None, fg=MODERN_COLORS['accent_green'],
+                 font=("Microsoft YaHei", 10, "bold"), **kwargs):
+        bg = bg or MODERN_COLORS['bg_primary']
+        super().__init__(master, bg=MODERN_COLORS['bg_secondary'], **kwargs)
+
+        header_frame = tk.Frame(self, bg=MODERN_COLORS['bg_secondary'], pady=3)
+        header_frame.pack(side=tk.TOP, fill=tk.X)
+
+        label = tk.Label(header_frame, text=text, bg=MODERN_COLORS['bg_secondary'],
+                        fg=fg, font=font, padx=10)
+        label.pack(side=tk.LEFT)
+
+        content_frame = tk.Frame(self, bg=MODERN_COLORS['bg_secondary'], padx=5, pady=5)
+        content_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        self._content_frame = content_frame
+
+    def pack(self, **kwargs):
+        super().pack(**kwargs)
+
+    def grid(self, **kwargs):
+        super().grid(**kwargs)
+
+    def grid_columnconfigure(self, index, **kwargs):
+        self._content_frame.grid_columnconfigure(index, **kwargs)
+
+    def grid_rowconfigure(self, index, **kwargs):
+        self._content_frame.grid_rowconfigure(index, **kwargs)
+
+class ModernText(tk.Text):
+    def __init__(self, master, **kwargs):
+        super().__init__(master,
+                        bg=MODERN_COLORS['bg_primary'],
+                        fg=MODERN_COLORS['text_primary'],
+                        insertbackground=MODERN_COLORS['accent_green'],
+                        selectbackground=MODERN_COLORS['selection'],
+                        selectforeground='#ffffff',
+                        relief=tk.FLAT,
+                        borderwidth=2,
+                        font=("Microsoft YaHei", 10),
+                        **kwargs)
+
+class ModernEntry(ttk.Entry):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
+        self.configure(style="ModernEntry.TEntry")
+
+class ModernButton(tk.Button):
+    def __init__(self, master, text="", command=None, width=10, **kwargs):
+        super().__init__(master,
+                        text=text,
+                        command=command,
+                        width=width,
+                        bg=MODERN_COLORS['accent_blue'],
+                        fg='#ffffff',
+                        activebackground=MODERN_COLORS['accent_blue_hover'],
+                        activeforeground='#ffffff',
+                        relief=tk.FLAT,
+                        borderwidth=0,
+                        font=("Microsoft YaHei", 10, "bold"),
+                        cursor="hand2",
+                        padx=12,
+                        pady=6,
+                        **kwargs)
+
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+
+    def _on_enter(self, event):
+        self.configure(bg=MODERN_COLORS['accent_blue_hover'])
+
+    def _on_leave(self, event):
+        self.configure(bg=MODERN_COLORS['accent_blue'])
+
 class BinaryEditorApp:
-    def __init__(self, root):
+    def __init__(self, root, config=None):
         self.root = root
-        self.root.title("汉化辅助编辑器")
+        self.root.title("汉化辅助编辑器 v8.0")
+        self.root.configure(bg=MODERN_COLORS['bg_primary'])
+
+        if config is None:
+            config = {}
+        
         try:
             from ctypes import windll
             self.dpi = windll.user32.GetDpiForWindow(root.winfo_id())
-            self.scale_factor = self.dpi / 96.0 
+            self.scale_factor = self.dpi / 96.0
         except:
             self.scale_factor = 1.0
+
         self.base_font_size = int(11 * self.scale_factor)
         self.zoom_level = 1.0
         self.zoom_factors = [0.9, 1.0]
-        initial_width = int(1300 * self.scale_factor)
+
+        initial_width = int(1400 * self.scale_factor)
         initial_height = int(1000 * self.scale_factor * self.zoom_level)
         self.root.geometry(f"{initial_width}x{initial_height}")
-        self.root.minsize(int(800 * self.scale_factor), int(600 * self.scale_factor))
-        self.root.option_add("*Font", f"SimSun {self.base_font_size}")
+        self.root.minsize(int(900 * self.scale_factor), int(650 * self.scale_factor))
 
-        self.max_input_length = 500      
-        self.extended_threshold = 200  
-        self.max_extended_lines = 10      
+        self._setup_modern_style()
+
+        self.max_input_length = 500
+        self.extended_threshold = 200
+        self.max_extended_lines = 10
         self.initial_height = 3
 
         self.file_path = ""
@@ -65,39 +224,65 @@ class BinaryEditorApp:
         self.history_index = 0
         self.max_history_items = 0
         self.mapping_file_path = None
-        self.current_mapping_data = {}     
-        self.pending_changes = False       
-        self.current_scan_mode = None     
+        self.current_mapping_data = {}
+        self.pending_changes = False
+        self.current_scan_mode = None
         self.current_segments = []
         self.current_matches = []
         self.current_match_index = -1
-        self.current_find_text = "" 
+        self.current_find_text = ""
         self.find_mode = "text"
         self.replace_buttons_disabled = False
-        self.replace_buttons_clicked = False 
+        self.replace_buttons_clicked = False
 
         self.input_type_options = ['字符串', '十六进制']
-        self.input_type_var = tk.StringVar(value=self.input_type_options[0])
-        self.replace_type_var = tk.StringVar(value=self.input_type_options[0])
+        self.input_type_var = tk.StringVar(value=config.get('input_type', "字符串"))
+        self.replace_type_var = tk.StringVar(value="字符串")
 
         self.encoding_options = [
-            'utf-8', 'gbk', 'utf-16le', 'utf-16be', 
-            'shift_jis', 'euc-jp', 'big5', 'gb2312', 
+            'utf-8', 'gbk', 'utf-16le', 'utf-16be',
+            'shift_jis', 'euc-jp', 'big5', 'gb2312',
             'iso-8859-1', 'utf-7', 'ascii', 'latin1'
         ]
-        self.encoding_var = tk.StringVar(value=self.encoding_options[0])
+        self.encoding_var = tk.StringVar(value=config.get('encoding', "utf-8"))
 
         self.string_entries = []
         self.current_string_index = -1
         self.sidebar_expanded = True
-        self.scan_mode_var = tk.StringVar(value="ansi")
-        self.menubar = tk.Menu(self.root)      
+        self.scan_mode_var = tk.StringVar(value=config.get('scan_mode', "ansi"))
+        self.menubar = tk.Menu(self.root)
         self.common_symbols = set(' \'"!?.,:;()[]{}<>-+=*/\\&%$#@~`|')
         self.word_pattern = re.compile(r'^[A-Za-z][a-z]{2,}(?:[-\'\.][A-Za-z][a-z]*)*$')
         self.common_abbr = ['ok', 'hi', 'bye', 'yes', 'no', 'id', 'vs', 'am', 'pm']
         self.create_widgets()
         self.setup_drag_and_drop()
-        self.update_status("就绪-请打开文件或拖拽文件到窗口")
+        self.update_status("就绪 - 请打开文件或拖拽文件到窗口")
+
+    def _setup_modern_style(self):
+        style = ttk.Style()
+        style.theme_use('clam')
+
+        style.configure(".", background=MODERN_COLORS['bg_primary'])
+        style.configure(".", foreground=MODERN_COLORS['text_primary'])
+        style.configure("TFrame", background=MODERN_COLORS['bg_primary'])
+        style.configure("TLabelframe", background=MODERN_COLORS['bg_secondary'], foreground=MODERN_COLORS['accent_green'], bordercolor=MODERN_COLORS['border'])
+        style.configure("TLabelframe.Label", background=MODERN_COLORS['bg_secondary'], foreground=MODERN_COLORS['accent_green'], font=("Microsoft YaHei", 10, "bold"))
+
+        style.configure("TLabel", background=MODERN_COLORS['bg_primary'], foreground=MODERN_COLORS['text_primary'], font=("Microsoft YaHei", 10))
+        style.configure("TButton", background=MODERN_COLORS['bg_tertiary'], foreground=MODERN_COLORS['text_primary'], bordercolor=MODERN_COLORS['border'], lightcolor=MODERN_COLORS['bg_hover'], darkcolor=MODERN_COLORS['bg_tertiary'], relief="flat", font=("Microsoft YaHei", 10))
+        style.map("TButton", background=[('active', MODERN_COLORS['accent_blue']), ('pressed', MODERN_COLORS['bg_active'])], foreground=[('active', '#ffffff')])
+
+        style.configure("TEntry", fieldbackground=MODERN_COLORS['bg_secondary'], foreground=MODERN_COLORS['text_primary'], bordercolor=MODERN_COLORS['border'], lightcolor=MODERN_COLORS['bg_hover'], darkcolor=MODERN_COLORS['bg_tertiary'])
+        style.configure("TCombobox", fieldbackground=MODERN_COLORS['bg_secondary'], background=MODERN_COLORS['bg_tertiary'], foreground=MODERN_COLORS['text_primary'], bordercolor=MODERN_COLORS['border'], arrowcolor=MODERN_COLORS['text_primary'])
+        style.map("TCombobox", fieldbackground=[('readonly', MODERN_COLORS['bg_secondary'])], selectbackground=[('readonly', MODERN_COLORS['accent_blue'])], selectforeground=[('readonly', '#ffffff')])
+
+        style.configure("TScrollbar", background=MODERN_COLORS['bg_tertiary'], troughcolor=MODERN_COLORS['bg_secondary'], bordercolor=MODERN_COLORS['border'], arrowcolor=MODERN_COLORS['text_secondary'])
+        style.map("TScrollbar", background=[('active', MODERN_COLORS['bg_active']), ('pressed', MODERN_COLORS['accent_blue'])])
+
+        style.configure("Treeview", background=MODERN_COLORS['bg_secondary'], fieldbackground=MODERN_COLORS['bg_secondary'], foreground=MODERN_COLORS['text_primary'], bordercolor=MODERN_COLORS['border'], rowheight=28, font=("Microsoft YaHei", 10))
+        style.configure("Treeview.Heading", background=MODERN_COLORS['bg_tertiary'], foreground=MODERN_COLORS['accent_yellow'], bordercolor=MODERN_COLORS['border'], font=("Microsoft YaHei", 10, "bold"))
+        style.map("Treeview", background=[('selected', MODERN_COLORS['selection'])], foreground=[('selected', '#ffffff')])
+        style.map("Treeview.Heading", background=[('active', MODERN_COLORS['bg_active'])])
 
     def add_tooltip(self, widget, text):
         ToolTip(widget, text)
@@ -108,7 +293,7 @@ class BinaryEditorApp:
         if hasattr(self, 'sidebar_frame') and self.sidebar_expanded:
             pass
     def _is_likely_valid_text(self, text):
-        if not text or len(text) < 4:
+        if not text or len(text) < 2:
             return False
         digit_count = sum(1 for c in text if c.isdigit())
         if digit_count > 1:
@@ -129,7 +314,7 @@ class BinaryEditorApp:
             vowels = set('aeiouAEIOU')
             vowel_count = sum(1 for c in text if c in vowels)
             consonant_count = sum(1 for c in text if c.isalpha() and c not in vowels)
-            if consonant_count > 0 and vowel_count == 0 and len(text) > 6:
+            if consonant_count > 0 and vowel_count == 0 and len(text) > 10:
                 return False
             illegal_patterns = [
                 r'^[A-Za-z]\d[A-Za-z]{2,}$',
@@ -147,7 +332,7 @@ class BinaryEditorApp:
         return False
 
     def _is_basic_english(self, text):
-        if not text or len(text) < 4:
+        if not text or len(text) < 2:
             return False
         digit_count = sum(1 for c in text if c.isdigit())
         if digit_count > 1:
@@ -155,7 +340,7 @@ class BinaryEditorApp:
                 if re.search(r'[A-Za-z]\d[A-Za-z]\d', text):
                     return False
         letters = sum(1 for c in text if c.isalpha())
-        if letters < 3:
+        if letters < 2:
             return False
         if re.match(r'^[0-9]+$', text) or re.match(r'^[0-9A-Fa-f]{8,}$', text):
             return False
@@ -175,7 +360,7 @@ class BinaryEditorApp:
             return True
         return False
 
-    def find_strings_simple(self, min_length=4):
+    def find_strings_simple(self, min_length=2):
         segments = []
         data_length = len(self.file_data)
         delimiters = {0x00, 0x09, 0x0A, 0x0D}
@@ -224,6 +409,40 @@ class BinaryEditorApp:
                     pass
         return segments
 
+    def _extract_utf16_with_gaps(self, segments, data_length):
+        i = 0
+        while i < data_length - 1:
+            if self.file_data[i] == 0x00 and i + 1 < data_length and 32 <= self.file_data[i+1] <= 126:
+                start = i
+                bytes_collected = bytearray()
+                valid_count = 0
+                while i < data_length - 1:
+                    if self.file_data[i] == 0x00 and 32 <= self.file_data[i+1] <= 126:
+                        bytes_collected.extend([self.file_data[i+1], self.file_data[i]])
+                        valid_count += 1
+                        i += 2
+                    elif self.file_data[i] == 0x00 and i + 2 < data_length and self.file_data[i+2] == 0x00:
+                        bytes_collected.extend([0x00, 0x00])
+                        i += 2
+                    else:
+                        break
+                if valid_count >= 2:
+                    try:
+                        text = bytes_collected.decode('utf-16le').rstrip('\x00')
+                        if text and self._is_likely_valid_text(text):
+                            segments.append({
+                                "start": start,
+                                "end": i - 1,
+                                "length": len(bytes_collected),
+                                "text": text,
+                                "bytes": bytes_collected,
+                                "encoding": "utf-16le"
+                            })
+                    except:
+                        pass
+            else:
+                i += 1
+
     def setup_drag_and_drop(self):
         try:
             import tkinterdnd2
@@ -231,8 +450,6 @@ class BinaryEditorApp:
             self.root.drop_target_register(DND_FILES)
             self.root.dnd_bind('<<Drop>>', self.on_drop_advanced)
             print("使用tkinterdnd2拖拽支持")
-        except ImportError:
-            print("tkinterdnd2未安装,拖拽功能不可用")
         except Exception as e:
             print(f"拖拽功能初始化失败:{e}")
 
@@ -447,10 +664,10 @@ class BinaryEditorApp:
     def get_mapping_file_path(self, scan_mode):
         if not self.file_path:
             return None
-        
+
         dir_path = os.path.dirname(self.file_path)
         base_name = os.path.splitext(os.path.basename(self.file_path))[0]
-        
+
         if scan_mode == "ansi":
             suffix = "_ansi"
         elif scan_mode == "unicode_le":
@@ -459,7 +676,7 @@ class BinaryEditorApp:
             suffix = "_unicode_be"
         else:
             suffix = ""
-        
+
         mapping_file = os.path.join(dir_path, f"{base_name}{suffix}_mapping.json")
         return mapping_file
 
@@ -467,19 +684,19 @@ class BinaryEditorApp:
         mapping_file = self.get_mapping_file_path(scan_mode)
         if not mapping_file or not os.path.exists(mapping_file):
             return None
-        
+
         try:
             import json
             with open(mapping_file, 'r', encoding='utf-8') as f:
                 mapping_data = json.load(f)
-            
+
             if mapping_data.get('file_size') != len(self.file_data):
                 self.update_status(f"映射文件与当前文件大小不匹配,将重新扫描")
                 return None
-            
+
             self.update_status(f"已加载本地映射文件:{os.path.basename(mapping_file)}")
             return mapping_data
-            
+
         except Exception as e:
             self.update_status(f"加载映射文件失败:{str(e)}")
             return None
@@ -488,10 +705,10 @@ class BinaryEditorApp:
         mapping_file = self.get_mapping_file_path(scan_mode)
         if not mapping_file:
             return
-        
+
         try:
             import json
-            
+
             mapping_data = {
                 'file_path': self.file_path,
                 'file_name': os.path.basename(self.file_path),
@@ -501,7 +718,7 @@ class BinaryEditorApp:
                 'encoding': self.get_encoding_for_scan_mode(scan_mode),
                 'strings': []
             }
-            
+
             for i, segment in enumerate(segments):
                 mapping_data['strings'].append({
                     'id': i + 1,
@@ -513,12 +730,12 @@ class BinaryEditorApp:
                     'bytes_hex': bytes_to_hex(segment.get('bytes', b'')),
                     'encoding': segment.get('encoding', 'unknown')
                 })
-            
+
             with open(mapping_file, 'w', encoding='utf-8') as f:
                 json.dump(mapping_data, f, ensure_ascii=False, indent=2)
-            
+
             self.update_status(f"映射已保存:{os.path.basename(mapping_file)}")
-            
+
         except Exception as e:
             self.update_status(f"保存映射文件失败:{str(e)}")
 
@@ -539,18 +756,19 @@ class BinaryEditorApp:
         self.current_scan_mode = scan_mode
         self.on_encoding_changed()
         mapping_data = self.load_mapping_from_file(scan_mode)
-        
+
         if mapping_data and mapping_data.get('strings'):
             self.current_mapping_data = mapping_data
             self.load_strings_from_mapping(mapping_data)
             self.update_status(f"已从本地映射加载{len(self.string_entries)}个字符串")
             return
+
         self.update_status("正在扫描字符串...")
         self.root.update_idletasks()
         segments = []
         if scan_mode == "ansi":
             self.update_status("ANSI扫描模式:请手动选择编码,UTF-8或GBK")
-            segments = self.find_strings_simple(min_length=4)
+            segments = self.find_strings_simple(min_length=2)
         elif scan_mode == "unicode_le":
             self.encoding_var.set("utf-16le")
             self.update_status("正在扫描UTF-16LE编码字符串")
@@ -559,51 +777,23 @@ class BinaryEditorApp:
             self.encoding_var.set("utf-16be")
             self.update_status("正在扫描UTF-16BE编码字符串")
             segments = self.find_unicode_strings(min_length=2, encoding_type="be")
+
         if not segments:
             messagebox.showinfo("无结果", "未找到有效字符串")
             return
-        self.current_segments = segments     
+
+        self.current_segments = segments
         self.load_strings_to_sidebar(segments, scan_mode)
-        self.save_mapping_to_file(scan_mode, segments)   
+        self.save_mapping_to_file(scan_mode, segments)
         self.update_status(f"扫描完成,找到{len(segments)}个字符串,映射文件已保存")
-        segments.sort(key=lambda x: x["start"])
-        for i, segment in enumerate(segments):
-            segment_length = segment.get("length", segment["end"] - segment["start"] + 1)
-            if scan_mode == "ansi":
-                encoding = "未知(请手动选择)"
-            elif scan_mode == "unicode_le":
-                encoding = "utf-16le"
-            elif scan_mode == "unicode_be":
-                encoding = "utf-16be"
-            else:
-                encoding = "utf-8"
-            self.string_entries.append({
-                "id": i + 1,
-                "address": segment["start"],
-                "length": segment["length"],
-                "text": segment["text"],
-                "bytes": segment.get("bytes", b""),
-                "encoding": encoding
-            })
-            display_text = segment["text"]
-            if len(display_text) > 20:
-                display_text = display_text[:17] + "..."
-            self.string_tree.insert("", tk.END, values=(
-                i + 1,
-                f"0x{segment['start']:08X}",
-                segment["length"],
-                display_text
-            ))
-        if self.string_tree.get_children():
-            self.string_tree.selection_set(self.string_tree.get_children()[0])
 
     def load_strings_to_sidebar(self, segments, scan_mode):
         self.string_entries = []
         for item in self.string_tree.get_children():
             self.string_tree.delete(item)
-        
+
         segments.sort(key=lambda x: x["start"])
-        
+
         for i, segment in enumerate(segments):
             segment_length = segment.get("length", segment["end"] - segment["start"] + 1)
             if scan_mode == "ansi":
@@ -614,7 +804,7 @@ class BinaryEditorApp:
                 encoding = "utf-16be"
             else:
                 encoding = "utf-8"
-            
+
             self.string_entries.append({
                 "id": i + 1,
                 "address": segment["start"],
@@ -625,18 +815,18 @@ class BinaryEditorApp:
                 "bytes": segment.get("bytes", b""),
                 "encoding": encoding
             })
-            
+
             display_text = segment["text"]
             if len(display_text) > 20:
                 display_text = display_text[:17] + "..."
-            
+
             self.string_tree.insert("", tk.END, values=(
                 i + 1,
                 f"0x{segment['start']:08X}",
                 segment["length"],
                 display_text
             ))
-        
+
         if self.string_tree.get_children():
             self.string_tree.selection_set(self.string_tree.get_children()[0])
 
@@ -698,7 +888,7 @@ class BinaryEditorApp:
             ))
     
         tree_scrollbar = None
-        for child in self.sidebar_frame.winfo_children():
+        for child in self.sidebar_frame._content_frame.winfo_children():
             if isinstance(child, ttk.Scrollbar):
                 tree_scrollbar = child
                 break
@@ -897,7 +1087,6 @@ class BinaryEditorApp:
             self.update_status(f"已切换到{current_encoding}模式,框选状态已重置,粘贴点分隔文本将自动转换")
         else:
             self.update_status(f"已切换到{current_encoding}模式,框选状态已重置")
-        self.reset_find_mode()
         self.hex_viewer.update_view()
 
     def reset_find_mode(self):
@@ -916,37 +1105,44 @@ class BinaryEditorApp:
         self.update_status("编码/输入类型已切换,查找模式和框选状态已重置")
 
     def create_widgets(self):
-        menubar = tk.Menu(self.root)
+        menubar = tk.Menu(self.root, bg=MODERN_COLORS['bg_secondary'], fg=MODERN_COLORS['text_primary'],
+                          activebackground=MODERN_COLORS['accent_blue'], activeforeground='#ffffff',
+                          font=("Microsoft YaHei", 10), tearoff=0)
 
-        file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="打开文件", command=self.open_file, accelerator="Ctrl+O")
-        file_menu.add_command(label="保存", command=self.save_file, accelerator="Ctrl+S")
-        file_menu.add_command(label="另存为", command=self.save_file_as, accelerator="Ctrl+T")
+        file_menu = tk.Menu(menubar, tearoff=0, bg=MODERN_COLORS['bg_secondary'],
+                           fg=MODERN_COLORS['text_primary'], activebackground=MODERN_COLORS['accent_blue'],
+                           activeforeground='#ffffff', font=("Microsoft YaHei", 10))
+        file_menu.add_command(label="📂 打开文件", command=self.open_file, accelerator="Ctrl+O")
+        file_menu.add_command(label="💾 保存", command=self.save_file, accelerator="Ctrl+S")
+        file_menu.add_command(label="📁 另存为", command=self.save_file_as, accelerator="Ctrl+T")
         file_menu.add_separator()
-        file_menu.add_command(label="退出", command=self.root.quit, accelerator="Ctrl+Q")
-        menubar.add_cascade(label="文件", menu=file_menu)
+        file_menu.add_command(label="❌ 退出", command=self.root.quit, accelerator="Ctrl+Q")
+        menubar.add_cascade(label="📁 文件", menu=file_menu)
 
-        edit_menu = tk.Menu(menubar, tearoff=0)
-        edit_menu.add_command(label="撤销", command=self.undo, accelerator="Ctrl+Z")
-        edit_menu.add_command(label="重做", command=self.redo, accelerator="Ctrl+Y")
+        edit_menu = tk.Menu(menubar, tearoff=0, bg=MODERN_COLORS['bg_secondary'],
+                           fg=MODERN_COLORS['text_primary'], activebackground=MODERN_COLORS['accent_blue'],
+                           activeforeground='#ffffff', font=("Microsoft YaHei", 10))
+        edit_menu.add_command(label="↩️ 撤销", command=self.undo, accelerator="Ctrl+Z")
+        edit_menu.add_command(label="↪️ 重做", command=self.redo, accelerator="Ctrl+Y")
         edit_menu.add_separator()
-        edit_menu.add_command(label="查找上一个", command=self.find_prev, accelerator="F1")
-        edit_menu.add_command(label="查找下一个", command=self.find_next, accelerator="F2") 
+        edit_menu.add_command(label="🎨 亮色主题", command=lambda: self.switch_theme('light'))
+        edit_menu.add_command(label="🌙 暗色主题", command=lambda: self.switch_theme('dark'))
         edit_menu.add_separator()
-        edit_menu.add_command(label="CP932乱码修复器", command=self.show_cp932_converter, accelerator="F7")
-        edit_menu.add_command(label="UTF-16字符串转换器", command=self.show_clipboard_converter, accelerator="F8")
-        edit_menu.add_separator()
-        menubar.add_cascade(label="选择功能", menu=edit_menu)
+        edit_menu.add_command(label="🔧 CP932乱码修复器", command=self.show_cp932_converter, accelerator="F7")
+        edit_menu.add_command(label="🔧 UTF-16字符串转换器", command=self.show_clipboard_converter, accelerator="F8")
+        menubar.add_cascade(label="🔧 选择功能", menu=edit_menu)
 
-        help_menu = tk.Menu(menubar, tearoff=0)
-        help_menu.add_command(label="关于此工具", command=self.show_about)
-        menubar.add_cascade(label="查看说明", menu=help_menu)
+        help_menu = tk.Menu(menubar, tearoff=0, bg=MODERN_COLORS['bg_secondary'],
+                           fg=MODERN_COLORS['text_primary'], activebackground=MODERN_COLORS['accent_blue'],
+                           activeforeground='#ffffff', font=("Microsoft YaHei", 10))
+        help_menu.add_command(label="ℹ️ 关于此工具", command=self.show_about)
+        menubar.add_cascade(label="📖 查看说明", menu=help_menu)
 
         self.root.config(menu=menubar)
         self.root.bind("<Control-z>", lambda e: self.undo())
         self.root.bind("<Control-y>", lambda e: self.redo())
         self.root.bind("<Control-o>", lambda e: self.open_file())
-        self.root.bind("<Control-s>", lambda e: self.save_file_as())       
+        self.root.bind("<Control-s>", lambda e: self.save_file_as())
         self.root.bind("<F1>", lambda e: self.find_prev())
         self.root.bind("<F2>", lambda e: self.find_next())
         self.root.bind("<F7>", lambda e: self.show_cp932_converter())
@@ -955,45 +1151,68 @@ class BinaryEditorApp:
         self.root.bind("<Control-T>", lambda e: self.save_file_as())
         self.root.bind("<Control-Up>", lambda e: self.prev_string())
         self.root.bind("<Control-Down>", lambda e: self.next_string())
-        toolbar_frame = ttk.Frame(self.root)
-        toolbar_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=(5, 0))
-        zoom_frame = ttk.Frame(toolbar_frame)
-        zoom_frame.pack(side=tk.LEFT, padx=(0, 20))
-        ttk.Label(zoom_frame, text="界面缩放:").pack(side=tk.LEFT, padx=(0, 5))
+
+        toolbar_frame = tk.Frame(self.root, bg=MODERN_COLORS['bg_secondary'], relief=tk.FLAT, height=45)
+        toolbar_frame.pack(side=tk.TOP, fill=tk.X, padx=0, pady=0)
+
+        title_label = tk.Label(toolbar_frame, text="⚡ 汉化辅助编辑器", bg=MODERN_COLORS['bg_secondary'],
+                              fg=MODERN_COLORS['accent_green'], font=("Microsoft YaHei", 14, "bold"), padx=15)
+        title_label.pack(side=tk.LEFT, pady=8)
+
+        zoom_frame = tk.Frame(toolbar_frame, bg=MODERN_COLORS['bg_secondary'])
+        zoom_frame.pack(side=tk.RIGHT, padx=15, pady=8)
+        tk.Label(zoom_frame, text="缩放:", bg=MODERN_COLORS['bg_secondary'],
+                fg=MODERN_COLORS['text_secondary'], font=("Microsoft YaHei", 10)).pack(side=tk.LEFT, padx=(0, 5))
         self.zoom_var = tk.StringVar(value="100%")
         zoom_combo = ttk.Combobox(zoom_frame, textvariable=self.zoom_var,
                              values=["90%", "100%"],
                              state="readonly", width=7)
         zoom_combo.pack(side=tk.LEFT, padx=2)
         zoom_combo.bind("<<ComboboxSelected>>", self.on_zoom_changed)
-        ttk.Button(zoom_frame, text="-", width=3, command=self.zoom_out).pack(side=tk.LEFT, padx=2)
-        ttk.Button(zoom_frame, text="+", width=3, command=self.zoom_in).pack(side=tk.LEFT, padx=2)
-        info_frame = ttk.Frame(toolbar_frame)
-        info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Label(info_frame, text="当前文件:").pack(side=tk.LEFT, padx=(0, 2))
-        self.file_path_label = ttk.Label(info_frame, text="未选择文件", foreground="red")
-        self.file_path_label.pack(side=tk.LEFT, padx=(0, 10))
+        tk.Button(zoom_frame, text="−", width=2, height=1, bg=MODERN_COLORS['bg_tertiary'],
+                 fg=MODERN_COLORS['text_primary'], relief=tk.FLAT, command=self.zoom_out,
+                 activebackground=MODERN_COLORS['accent_blue'], font=("Arial", 12)).pack(side=tk.LEFT, padx=2)
+        tk.Button(zoom_frame, text="+", width=2, height=1, bg=MODERN_COLORS['bg_tertiary'],
+                 fg=MODERN_COLORS['text_primary'], relief=tk.FLAT, command=self.zoom_in,
+                 activebackground=MODERN_COLORS['accent_blue'], font=("Arial", 12)).pack(side=tk.LEFT, padx=2)
 
-        ttk.Label(info_frame, text="文件大小:").pack(side=tk.LEFT, padx=(0, 2))
-        self.file_size_label = ttk.Label(info_frame, text="0字节")
+        info_frame = tk.Frame(toolbar_frame, bg=MODERN_COLORS['bg_secondary'])
+        info_frame.pack(side=tk.RIGHT, padx=20, pady=8)
+
+        file_icon = tk.Label(info_frame, text="📄", bg=MODERN_COLORS['bg_secondary'], font=("Segoe UI Emoji", 11))
+        file_icon.pack(side=tk.LEFT, padx=(0, 2))
+        self.file_path_label = tk.Label(info_frame, text="未选择文件", bg=MODERN_COLORS['bg_secondary'],
+                                        fg=MODERN_COLORS['text_secondary'], font=("Microsoft YaHei", 10))
+        self.file_path_label.pack(side=tk.LEFT, padx=(0, 15))
+
+        size_icon = tk.Label(info_frame, text="📊", bg=MODERN_COLORS['bg_secondary'], font=("Segoe UI Emoji", 11))
+        size_icon.pack(side=tk.LEFT, padx=(0, 2))
+        self.file_size_label = tk.Label(info_frame, text="0字节", bg=MODERN_COLORS['bg_secondary'],
+                                        fg=MODERN_COLORS['text_secondary'], font=("Microsoft YaHei", 10))
         self.file_size_label.pack(side=tk.LEFT)
 
-        main_container = ttk.Frame(self.root)
-        main_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        separator = tk.Frame(self.root, bg=MODERN_COLORS['border'], height=1)
+        separator.pack(side=tk.TOP, fill=tk.X)
+
+        main_container = tk.Frame(self.root, bg=MODERN_COLORS['bg_primary'])
+        main_container.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
         main_container.bind("<MouseWheel>", self.on_mousewheel)
         main_container.bind("<Button-4>", self.on_mousewheel)
         main_container.bind("<Button-5>", self.on_mousewheel)
 
-        left_container = ttk.Frame(main_container)
-        left_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        left_container = tk.Frame(main_container, bg=MODERN_COLORS['bg_primary'])
+        left_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        left_container.grid_rowconfigure(0, weight=0)
+        left_container.grid_rowconfigure(1, weight=1)
+        left_container.grid_columnconfigure(0, weight=1)
 
-        file_info_frame = ttk.LabelFrame(left_container, text="文件信息")
-        file_info_frame.pack(fill=tk.X, pady=(0, 5))
+        file_info_frame = ModernLabelFrame(left_container, text="文件信息", bg=MODERN_COLORS['bg_primary'])
+        file_info_frame.grid(row=0, column=0, sticky=tk.EW, pady=(0, 2))
 
-        hex_frame = ttk.LabelFrame(left_container, text="十六进制视图")
-        hex_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 2))
+        hex_frame = ModernLabelFrame(left_container, text="十六进制视图", bg=MODERN_COLORS['bg_primary'])
+        hex_frame.grid(row=1, column=0, sticky=tk.NSEW, pady=(0, 2))
 
-        zoomed_height = int(25 * self.zoom_level)
+        zoomed_height = int(20 * self.zoom_level)
         self.hex_viewer = HexViewer(hex_frame, width=70, height=zoomed_height, app=self)
         self.hex_viewer.hex_text.bind("<Button-1>", self.on_hex_click)
         self.hex_viewer.ascii_text.bind("<Button-1>", self.on_ascii_click)
@@ -1003,142 +1222,135 @@ class BinaryEditorApp:
         v_scrollbar = ttk.Scrollbar(hex_frame, orient=tk.VERTICAL, command=self.hex_viewer.yview)
         v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.hex_viewer.set_scroll_command(v_scrollbar.set)
-        results_frame = ttk.LabelFrame(left_container, text="匹配结果")
-        results_frame.pack(fill=tk.BOTH, expand=False, pady=(0, 2))
-        results_header_frame = ttk.Frame(results_frame)
-        results_header_frame.pack(fill=tk.X, padx=5, pady=2)
-        self.results_count_label = ttk.Label(results_header_frame, text="匹配数量:0")
-        self.results_count_label.pack(side=tk.LEFT, padx=5, pady=2)
-        columns = ("位置", "字节")
-        self.results_tree = ttk.Treeview(results_frame, columns=columns, show="headings", height=2)
-        self.results_tree.heading("位置", text="位置(可复制)")
-        self.results_tree.column("位置", width=120, anchor=tk.CENTER)
-        self.results_tree.heading("字节", text="字节")
-        self.results_tree.column("字节", width=600, anchor=tk.W)
-        self.results_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        self.create_context_menu()
+        search_frame = ModernLabelFrame(left_container, text="查找和替换", bg=MODERN_COLORS['bg_primary'])
+        search_frame.grid(row=2, column=0, sticky=tk.EW)
 
-        scrollbar = ttk.Scrollbar(results_frame, orient=tk.VERTICAL, command=self.results_tree.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.results_tree.configure(yscroll=scrollbar.set)
+        search_frame_inner = search_frame._content_frame
+        search_frame_inner.grid_rowconfigure(0, weight=0)
+        search_frame_inner.grid_rowconfigure(1, weight=0)
+        search_frame_inner.grid_rowconfigure(2, weight=0)
+        search_frame_inner.grid_rowconfigure(3, weight=0)
+        search_frame_inner.grid_rowconfigure(4, weight=0)
+        search_frame_inner.grid_columnconfigure(0, weight=1)
 
-        self.results_tree.bind("<<TreeviewSelect>>", self.on_result_select)
-        self.results_tree.bind("<ButtonRelease-1>", self.on_result_click)
+        input_type_frame = tk.Frame(search_frame_inner, bg=MODERN_COLORS['bg_secondary'])
+        input_type_frame.grid(row=0, column=0, sticky=tk.EW, padx=10, pady=(5, 0))
 
-        search_frame = ttk.LabelFrame(left_container, text="查找和替换")
-        search_frame.pack(fill=tk.BOTH, expand=False, pady=(0, 5))
-
-        search_frame.grid_columnconfigure(1, weight=0)
-        search_frame.grid_columnconfigure(2, weight=0)
-        search_frame.grid_columnconfigure(3, weight=1)
-        search_frame.grid_rowconfigure(2, weight=0)
-        search_frame.grid_rowconfigure(3, weight=0)
-        search_frame.grid_rowconfigure(4, weight=0)
-        search_frame.grid_rowconfigure(5, weight=0)
-
-        ttk.Label(search_frame, text="输入类型:").grid(row=1, column=0, sticky=tk.W, padx=10, pady=10)
-        input_type_menu = ttk.Combobox(search_frame, textvariable=self.input_type_var,
-                                       values=self.input_type_options, state="readonly", width=8)
-        input_type_menu.grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+        tk.Label(input_type_frame, text="输入类型:", bg=MODERN_COLORS['bg_secondary'],
+                fg=MODERN_COLORS['accent_yellow'], font=("Microsoft YaHei", 10, "bold")).pack(side=tk.LEFT, padx=(0, 8))
+        input_type_menu = ttk.Combobox(input_type_frame, textvariable=self.input_type_var,
+                                       values=self.input_type_options, state="readonly", width=10)
+        input_type_menu.pack(side=tk.LEFT, padx=2)
         input_type_menu.bind("<<ComboboxSelected>>", self.on_input_type_changed)
 
-        ttk.Label(search_frame, text="编码:").grid(row=1, column=2, sticky=tk.W, padx=(10, 5), pady=10)
-        self.encoding_menu = ttk.Combobox(search_frame, textvariable=self.encoding_var,
-                                     values=self.encoding_options, state="readonly", width=10)
-        self.encoding_menu.grid(row=1, column=3, sticky=tk.W, padx=(0, 5), pady=5)
+        tk.Label(input_type_frame, text="编码:", bg=MODERN_COLORS['bg_secondary'],
+                fg=MODERN_COLORS['accent_yellow'], font=("Microsoft YaHei", 10, "bold")).pack(side=tk.LEFT, padx=(15, 8))
+        self.encoding_menu = ttk.Combobox(input_type_frame, textvariable=self.encoding_var,
+                                     values=self.encoding_options, state="readonly", width=12)
+        self.encoding_menu.pack(side=tk.LEFT, padx=2)
         self.encoding_menu.bind("<<ComboboxSelected>>", self.on_encoding_changed)
 
-        ttk.Label(search_frame, text="查找字符串:").grid(row=2, column=0, sticky=tk.NW, padx=10, pady=10)
-        self.find_text = tk.Text(search_frame, wrap=tk.NONE, height=3)
-        self.find_text.grid(row=2, column=1, columnspan=3, sticky=tk.NSEW, padx=5, pady=2)
+        search_input_frame = tk.Frame(search_frame_inner, bg=MODERN_COLORS['bg_secondary'])
+        search_input_frame.grid(row=1, column=0, sticky=tk.EW, padx=10, pady=5)
+
+        tk.Label(search_input_frame, text="查找字符串:", bg=MODERN_COLORS['bg_secondary'],
+                fg=MODERN_COLORS['text_primary'], font=("Microsoft YaHei", 10)).pack(anchor=tk.W)
+        self.find_text = ModernText(search_input_frame, height=2)
+        self.find_text.pack(fill=tk.X, pady=2)
         self.find_text.bind("<KeyRelease>", self.validate_input)
         self.find_text.bind("<FocusIn>", self.on_find_focus)
         self.find_text.bind("<Control-v>", self.handle_paste)
-        self.find_text.bind("<Key>", lambda e: self.schedule_text_processing(e))
-        self.update_input_height(self.find_text, 4)
         self.add_tooltip(self.find_text, "双击此输入框自动从16进制模式切换至字符串模式")
 
-        ttk.Label(search_frame, text="查找16进制字节:").grid(row=3, column=0, sticky=tk.W, padx=10, pady=10)
-        self.find_hex_entry = ttk.Entry(search_frame)
-        self.find_hex_entry.grid(row=3, column=1, columnspan=3, sticky=tk.NSEW, padx=5, pady=5)
+        tk.Label(search_input_frame, text="查找16进制字节序列:", bg=MODERN_COLORS['bg_secondary'],
+                fg=MODERN_COLORS['text_primary'], font=("Microsoft YaHei", 10)).pack(anchor=tk.W, pady=(5, 0))
+        self.find_hex_entry = ModernEntry(search_input_frame)
+        self.find_hex_entry.pack(fill=tk.X, pady=2)
         self.find_hex_entry.bind("<KeyRelease>", self.validate_hex_input)
         self.find_hex_entry.bind("<FocusIn>", self.on_hex_focus)
         self.add_tooltip(self.find_hex_entry, "双击此输入框自动从字符串模式切换至16进制模式")
 
-        ttk.Label(search_frame, text="替换字符串:").grid(row=4, column=0, sticky=tk.NW, padx=10, pady=10)
-        self.replace_text = tk.Text(search_frame, wrap=tk.WORD)
-        self.replace_text.grid(row=4, column=1, columnspan=3, sticky=tk.NSEW, padx=5, pady=5)
+        replace_input_frame = tk.Frame(search_frame_inner, bg=MODERN_COLORS['bg_secondary'])
+        replace_input_frame.grid(row=2, column=0, sticky=tk.EW, padx=10, pady=5)
+
+        tk.Label(replace_input_frame, text="替换字符串:", bg=MODERN_COLORS['bg_secondary'],
+                fg=MODERN_COLORS['accent_green'], font=("Microsoft YaHei", 10)).pack(anchor=tk.W)
+        self.replace_text = ModernText(replace_input_frame, height=2)
+        self.replace_text.pack(fill=tk.X, pady=2)
         self.replace_text.bind("<KeyRelease>", self.validate_replace_input)
         self.replace_text.bind("<Control-v>", self.handle_paste)
-        self.update_input_height(self.replace_text, 4)
 
-        ttk.Label(search_frame, text="替换16进制字节序列:").grid(row=5, column=0, sticky=tk.W, padx=10, pady=10)
-        self.replace_hex_entry = ttk.Entry(search_frame)
-        self.replace_hex_entry.grid(row=5, column=1, columnspan=3, sticky=tk.NSEW, padx=5, pady=5)
+        tk.Label(replace_input_frame, text="替换16进制字节序列:", bg=MODERN_COLORS['bg_secondary'],
+                fg=MODERN_COLORS['accent_green'], font=("Microsoft YaHei", 10)).pack(anchor=tk.W, pady=(5, 0))
+        self.replace_hex_entry = ModernEntry(replace_input_frame)
+        self.replace_hex_entry.pack(fill=tk.X, pady=2)
         self.replace_hex_entry.bind("<KeyRelease>", self.validate_replace_hex_input)
         self.replace_hex_entry.bind("<Control-v>", self.handle_paste)
 
-        button_frame = ttk.Frame(search_frame)
-        button_frame.grid(row=6, column=0, columnspan=6, sticky=tk.EW, padx=10, pady=10)
+        button_frame = tk.Frame(search_frame_inner, bg=MODERN_COLORS['bg_tertiary'])
+        button_frame.grid(row=3, column=0, sticky=tk.EW, padx=10, pady=(5, 5))
 
         button_frame.grid_columnconfigure(0, weight=1)
         button_frame.grid_columnconfigure(1, weight=1)
         button_frame.grid_columnconfigure(2, weight=1)
         button_frame.grid_columnconfigure(3, weight=1)
         button_frame.grid_columnconfigure(4, weight=1)
-        find_other_button = ttk.Button(button_frame, text="查找字符串或字节序列", command=self.confirm_new_find_text)
-        find_other_button.grid(row=0, column=0, padx=5, pady=5)
-        self.add_tooltip(find_other_button, "在字符串查找输入框输入文本并点此按钮查找字符串,在字节序列查找输入框输入字节序列并点此按钮查找字节序列,不得在字符串输入框里查找字节序列,反之亦然")
 
-        find_prev_button = ttk.Button(button_frame, text="查找上一个(F1)", command=self.find_prev)
-        find_prev_button.grid(row=0, column=1, padx=5, pady=5)
+        ModernButton(button_frame, text="查找", command=self.confirm_new_find_text).grid(row=0, column=0, padx=4, pady=4)
+        ModernButton(button_frame, text="上一个(F1)", command=self.find_prev).grid(row=0, column=1, padx=4, pady=4)
+        ModernButton(button_frame, text="下一个(F2)", command=self.find_next).grid(row=0, column=2, padx=4, pady=4)
+        self.replace_button = ModernButton(button_frame, text="替换当前", command=self.replace_current)
+        self.replace_button.grid(row=0, column=3, padx=4, pady=4)
+        self.replace_all_button = ModernButton(button_frame, text="替换全部", command=self.replace_all)
+        self.replace_all_button.grid(row=0, column=4, padx=4, pady=4)
 
-        find_next_button = ttk.Button(button_frame, text="查找下一个(F2)", command=self.find_next)
-        find_next_button.grid(row=0, column=2, padx=5, pady=5)
+        self.sidebar_frame = ModernLabelFrame(main_container, text="字符串列表", bg=MODERN_COLORS['bg_primary'])
+        self.sidebar_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=(0, 5), pady=5)
 
-        self.replace_button = ttk.Button(button_frame, text="替换当前搜索内容", command=self.replace_current)
-        self.replace_button.grid(row=0, column=3, padx=5, pady=5)
-        self.add_tooltip(self.replace_button, "点击此按钮替换文本或者字节序列,注意切换16进制模式或字符串模式")
+        sidebar_inner = self.sidebar_frame._content_frame
 
-        self.replace_all_button = ttk.Button(button_frame, text="替换全部搜索内容", command=self.replace_all)
-        self.replace_all_button.grid(row=0, column=4, padx=5, pady=5)
-        self.add_tooltip(self.replace_all_button, "批量替换字符串或字节序列")
+        filter_frame = tk.Frame(sidebar_inner, bg=MODERN_COLORS['bg_secondary'])
+        filter_frame.pack(fill=tk.X, padx=8, pady=(8, 5))
 
-        self.sidebar_frame = ttk.LabelFrame(main_container, text="字符串列表")
-        self.sidebar_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=(5, 0), pady=0)
-        filter_frame = ttk.Frame(self.sidebar_frame)
-        filter_frame.pack(fill=tk.X, padx=5, pady=(5, 0))   
-        ttk.Label(filter_frame, text="过滤:").pack(side=tk.LEFT, padx=2)
+        tk.Label(filter_frame, text="🔍", bg=MODERN_COLORS['bg_secondary'], font=("Segoe UI Emoji", 11)).pack(side=tk.LEFT, padx=(0, 5))
         self.filter_var = tk.StringVar()
-        self.filter_entry = ttk.Entry(filter_frame, textvariable=self.filter_var)
+        self.filter_entry = ModernEntry(filter_frame, textvariable=self.filter_var)
         self.filter_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
         self.case_sensitive_var = tk.BooleanVar(value=True)
-        self.case_checkbox = ttk.Checkbutton(filter_frame, text="区分大小写", 
-                                        variable=self.case_sensitive_var,
+        self.case_checkbox = tk.Checkbutton(filter_frame, text="大小写敏感",
+                                        variable=self.case_sensitive_var, bg=MODERN_COLORS['bg_secondary'],
+                                        fg=MODERN_COLORS['text_primary'], selectcolor=MODERN_COLORS['bg_tertiary'],
+                                        activebackground=MODERN_COLORS['bg_secondary'],
                                         command=self.on_filter_changed)
         self.case_checkbox.pack(side=tk.LEFT, padx=5)
         self.filter_var.trace_add('write', self.on_filter_changed)
-        sidebar_controls = ttk.Frame(self.sidebar_frame)
-        sidebar_controls.pack(fill=tk.X, padx=5, pady=5)
-        sidebar_controls = ttk.Frame(self.sidebar_frame)
-        sidebar_controls.pack(fill=tk.X, padx=5, pady=5)
-        sidebar_controls = ttk.Frame(self.sidebar_frame)
-        sidebar_controls.pack(fill=tk.X, padx=5, pady=5)
-        ttk.Label(sidebar_controls, text="模式:").pack(side=tk.LEFT, padx=2)
-        self.scan_mode_var = tk.StringVar(value="ansi")
-        self.scan_mode_menu = ttk.Combobox(sidebar_controls, textvariable=self.scan_mode_var,
-                           values=["ansi", "unicode_le", "unicode_be"], 
+
+        sidebar_controls = tk.Frame(sidebar_inner, bg=MODERN_COLORS['bg_secondary'])
+        sidebar_controls.pack(fill=tk.X, padx=8, pady=5)
+
+        mode_frame = tk.Frame(sidebar_controls, bg=MODERN_COLORS['bg_secondary'])
+        mode_frame.pack(side=tk.LEFT)
+        tk.Label(mode_frame, text="模式:", bg=MODERN_COLORS['bg_secondary'],
+                fg=MODERN_COLORS['accent_yellow'], font=("Microsoft YaHei", 10, "bold")).pack(side=tk.LEFT, padx=(0, 5))
+        self.scan_mode_var = tk.StringVar(value=config.get('scan_mode', "ansi"))
+        self.scan_mode_menu = ttk.Combobox(mode_frame, textvariable=self.scan_mode_var,
+                           values=["ansi", "unicode_le", "unicode_be"],
                            state="readonly", width=12)
         self.scan_mode_menu.pack(side=tk.LEFT, padx=2)
         self.scan_mode_menu.bind("<<ComboboxSelected>>", self.on_scan_mode_changed)
-        scan_btn = ttk.Button(sidebar_controls, text="扫描", command=self.scan_strings_for_sidebar)
-        scan_btn.pack(side=tk.LEFT, padx=2)
-        self.add_tooltip(scan_btn, "点击扫描按钮生成本地映射,下次可快速加载字符串")
-        ttk.Button(sidebar_controls, text="上一个", command=self.prev_string).pack(side=tk.LEFT, padx=2)
-        ttk.Button(sidebar_controls, text="下一个", command=self.next_string).pack(side=tk.LEFT, padx=2)
+
+        nav_frame = tk.Frame(sidebar_controls, bg=MODERN_COLORS['bg_secondary'])
+        nav_frame.pack(side=tk.RIGHT)
+        ModernButton(nav_frame, text="◀ 上一个", command=self.prev_string, width=8).pack(side=tk.LEFT, padx=2)
+        ModernButton(nav_frame, text="下一个 ▶", command=self.next_string, width=8).pack(side=tk.LEFT, padx=2)
+
+        scan_btn_frame = tk.Frame(sidebar_controls, bg=MODERN_COLORS['bg_secondary'])
+        scan_btn_frame.pack(side=tk.LEFT, padx=(10, 0))
+        ModernButton(scan_btn_frame, text="🚀 扫描", command=self.scan_strings_for_sidebar, width=8).pack(side=tk.LEFT, padx=2)
+
         columns = ("ID", "地址", "长度", "内容")
-        self.string_tree = ttk.Treeview(self.sidebar_frame, columns=columns, show="headings", height=15)
+        self.string_tree = ttk.Treeview(sidebar_inner, columns=columns, show="headings", height=15)
         self.string_tree.heading("ID", text="ID")
         self.string_tree.column("ID", width=40, anchor=tk.CENTER)
         self.string_tree.heading("地址", text="地址")
@@ -1147,18 +1359,21 @@ class BinaryEditorApp:
         self.string_tree.column("长度", width=50, anchor=tk.CENTER)
         self.string_tree.heading("内容", text="内容")
         self.string_tree.column("内容", width=200, anchor=tk.W)
-        tree_scrollbar = ttk.Scrollbar(self.sidebar_frame, orient=tk.VERTICAL, command=self.string_tree.yview)
+        tree_scrollbar = ttk.Scrollbar(sidebar_inner, orient=tk.VERTICAL, command=self.string_tree.yview)
         self.string_tree.configure(yscrollcommand=tree_scrollbar.set)
         self.string_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         tree_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.string_tree.bind("<<TreeviewSelect>>", self.on_string_selected)
         self.string_tree.bind("<Double-1>", self.on_string_double_click)
 
-        status_frame = ttk.Frame(self.root, height=25)
+        self.create_context_menu()
+
+        status_frame = tk.Frame(self.root, bg=MODERN_COLORS['accent_blue'], height=28)
         status_frame.pack(side=tk.BOTTOM, fill=tk.X)
         status_frame.pack_propagate(False)
-        self.status_bar = ttk.Label(status_frame, text="就绪", anchor=tk.NW, padding=(2, 0, 0, 0))
-        self.status_bar.pack(fill=tk.X, side=tk.TOP)
+        self.status_bar = tk.Label(status_frame, text="就绪", anchor=tk.NW,
+                                   bg=MODERN_COLORS['accent_blue'], fg='#ffffff', font=("Microsoft YaHei", 10))
+        self.status_bar.pack(fill=tk.X, side=tk.TOP, padx=8, pady=4)
 
         self.find_mode = "text"
         self.update_input_fields_state()
@@ -1210,31 +1425,31 @@ class BinaryEditorApp:
         self.hex_viewer.update_view()
 
     def update_all_fonts(self, font):
-        self.root.option_add("*Font", font)
+        self.root.option_add("*Font", "Microsoft YaHei 10")
         widgets_to_update = [
             self.file_path_label, self.file_size_label,
-            self.status_bar, self.find_text, self.replace_text
-        ]    
+            self.status_bar
+        ]
         for widget in widgets_to_update:
             try:
                 if hasattr(widget, 'config'):
-                    widget.config(font=font)
+                    widget.config(font="Microsoft YaHei 10")
             except:
-                pass  
+                pass
         entry_widgets = [self.find_hex_entry, self.replace_hex_entry]
         for entry in entry_widgets:
             try:
-                entry.config(font=font)
+                entry.config(font="Consolas 10")
             except:
-                pass  
+                pass
         try:
             style = ttk.Style()
-            style.configure("Treeview", font=font)
-            style.configure("Treeview.Heading", font=font)
+            style.configure("Treeview", font="Microsoft YaHei 10")
+            style.configure("Treeview.Heading", font="Microsoft YaHei 10 bold")
         except:
-            pass   
+            pass
         if hasattr(self, 'hex_viewer'):
-            self.hex_viewer.set_font(font)
+            self.hex_viewer.set_font("Consolas 10")
 
     def adjust_window_height(self):
         if not self.root.winfo_exists():
@@ -1301,13 +1516,6 @@ class BinaryEditorApp:
                 find_bytes = text.encode(current_encoding, errors='ignore')
                 self.current_matches = [{"pos": address, "bytes": find_bytes}]
                 self.current_match_index = 0
-                self.results_count_label.config(text=f"匹配数量:1")
-                for item in self.results_tree.get_children():
-                    self.results_tree.delete(item)
-                self.results_tree.insert("", tk.END, values=(
-                    f"0x{address:08X}",
-                    bytes_to_hex(find_bytes)
-                ))
                 self.replace_button.config(state=tk.NORMAL)
                 self.replace_all_button.config(state=tk.NORMAL)
                 self.replace_buttons_disabled = False
@@ -1395,10 +1603,9 @@ class BinaryEditorApp:
         self.update_input_height(text_widget, max_lines)
 
     def update_input_height(self, text_widget, lines):
-        current_height = text_widget.cget('height')
+        current_height = int(text_widget.cget('height'))
         if current_height != lines:
             text_widget.config(height=lines)
-            text_widget.master.update_idletasks()
 
     def check_long_text(self, text_widget):
         text = text_widget.get("1.0", tk.END).strip()
@@ -1415,10 +1622,7 @@ class BinaryEditorApp:
             self.update_status(f"输入内容较长({length}字符),可能影响性能")
 
     def create_context_menu(self):
-        self.context_menu = tk.Menu(self.root, tearoff=0)
-        self.context_menu.add_command(label="复制位置", command=self.copy_position)
-        self.results_tree.bind("<Button-3>", self.show_context_menu)
-        self.results_tree.bind("<Control-c>", self.copy_position_event)
+        pass
 
     def insert_bytes(self):
         if not hasattr(self.hex_viewer, 'right_click_pos') or self.hex_viewer.right_click_pos is None:
@@ -1627,26 +1831,6 @@ class BinaryEditorApp:
         start_entry.focus_set()
         start_entry.select_range(0, tk.END)
 
-    def show_context_menu(self, event):
-        item = self.results_tree.identify_row(event.y)
-        if item:
-            self.results_tree.selection_set(item)
-            self.context_menu.post(event.x_root, event.y_root)
-
-    def copy_position_event(self, event):
-        self.copy_position()
-        return "break"
-
-    def copy_position(self):
-        selected = self.results_tree.selection()
-        if not selected:
-            return
-
-        position = self.results_tree.item(selected[0], "values")[0]
-        self.root.clipboard_clear()
-        self.root.clipboard.append(position)
-        self.update_status(f"已复制位置:{position}")
-
     def handle_paste(self, event):
         try:
             focused_widget = self.root.focus_get()
@@ -1836,12 +2020,102 @@ class BinaryEditorApp:
         self.replace_text.config(state=tk.NORMAL)
         self.replace_hex_entry.config(state=tk.NORMAL)
 
+    def switch_theme(self, theme):
+        global MODERN_COLORS, CURRENT_THEME
+        
+        input_type_value = self.input_type_var.get() if hasattr(self, 'input_type_var') else "字符串"
+        encoding_value = self.encoding_var.get() if hasattr(self, 'encoding_var') else "utf-8"
+        scan_mode_value = self.scan_mode_var.get() if hasattr(self, 'scan_mode_var') else "ansi"
+        zoom_value = self.zoom_var.get() if hasattr(self, 'zoom_var') else "100%"
+        
+        if theme == 'light':
+            MODERN_COLORS = MODERN_COLORS_LIGHT
+            CURRENT_THEME = 'light'
+        else:
+            MODERN_COLORS = MODERN_COLORS_DARK
+            CURRENT_THEME = 'dark'
+        
+        save_config({
+            'theme': CURRENT_THEME,
+            'encoding': encoding_value,
+            'scan_mode': scan_mode_value,
+            'input_type': input_type_value
+        })
+        
+        self.root.configure(bg=MODERN_COLORS['bg_primary'])
+        
+        self._setup_modern_style()
+        
+        self.update_all_widgets_color()
+        
+        if hasattr(self, 'input_type_var'):
+            self.input_type_var.set(input_type_value)
+        if hasattr(self, 'encoding_var'):
+            self.encoding_var.set(encoding_value)
+        if hasattr(self, 'scan_mode_var'):
+            self.scan_mode_var.set(scan_mode_value)
+        if hasattr(self, 'zoom_var'):
+            self.zoom_var.set(zoom_value)
+        
+        self.update_status(f"已切换到{('亮色' if theme == 'light' else '暗色')}主题")
+
+    def update_all_widgets_color(self):
+        for widget in self.root.winfo_children():
+            self.update_widget_color(widget)
+        
+        if hasattr(self, 'sidebar_frame') and hasattr(self.sidebar_frame, '_content_frame'):
+            self.sidebar_frame.configure(bg=MODERN_COLORS['bg_secondary'])
+            self.sidebar_frame._content_frame.configure(bg=MODERN_COLORS['bg_secondary'])
+        
+        if hasattr(self, 'string_tree'):
+            style = ttk.Style()
+            style.configure('Treeview', 
+                           background=MODERN_COLORS['bg_primary'],
+                           foreground=MODERN_COLORS['text_primary'],
+                           fieldbackground=MODERN_COLORS['bg_primary'])
+            style.configure('Treeview.Heading', 
+                           background=MODERN_COLORS['bg_tertiary'],
+                           foreground=MODERN_COLORS['text_primary'])
+
+    def update_widget_color(self, widget):
+        try:
+            widget_type = str(type(widget)).lower()
+            
+            if 'frame' in widget_type:
+                widget.configure(bg=MODERN_COLORS['bg_secondary'], highlightbackground=MODERN_COLORS['border'], highlightthickness=1)
+            elif 'label' in widget_type:
+                widget.configure(bg=MODERN_COLORS['bg_secondary'], fg=MODERN_COLORS['text_primary'])
+            elif 'button' in widget_type:
+                widget.configure(bg=MODERN_COLORS['accent_blue'], fg='#ffffff',
+                                activebackground=MODERN_COLORS['accent_blue_hover'],
+                                highlightbackground=MODERN_COLORS['border'], highlightthickness=1)
+            elif 'entry' in widget_type:
+                widget.configure(bg=MODERN_COLORS['bg_primary'], fg=MODERN_COLORS['text_primary'],
+                                insertbackground=MODERN_COLORS['text_primary'],
+                                highlightbackground=MODERN_COLORS['border'], highlightthickness=1)
+            elif 'text' in widget_type:
+                widget.configure(bg=MODERN_COLORS['bg_primary'], fg=MODERN_COLORS['text_primary'],
+                                insertbackground=MODERN_COLORS['text_primary'])
+            elif 'checkbutton' in widget_type:
+                widget.configure(bg=MODERN_COLORS['bg_secondary'], fg=MODERN_COLORS['text_primary'],
+                                selectcolor=MODERN_COLORS['bg_primary'])
+            elif 'optionmenu' in widget_type or 'combobox' in widget_type:
+                style = ttk.Style()
+                style.configure('TCombobox', 
+                               fieldbackground=MODERN_COLORS['bg_primary'],
+                               background=MODERN_COLORS['bg_secondary'],
+                               foreground=MODERN_COLORS['text_primary'])
+            
+            for child in widget.winfo_children():
+                self.update_widget_color(child)
+        except Exception:
+            pass
+
     def on_input_type_changed(self, event=None):
         input_type = self.input_type_var.get()
         self.find_mode = "hex" if input_type == "十六进制" else "text"
         self.update_input_fields_state()
         self.validate_input()
-        self.reset_find_mode()
 
     def open_file(self):
         file_path = filedialog.askopenfilename(title="选择要编辑的文件")
@@ -1982,53 +2256,140 @@ class BinaryEditorApp:
             self.load_strings_from_mapping(self.current_mapping_data)
 
     def show_about(self):
-        about_text = """汉化辅助编辑器
-版本7.6    [B站偷吃布丁的涅普缇努制作,第四梦境协助修改]
+        about_window = tk.Toplevel(self.root)
+        about_window.title("关于 汉化辅助编辑器")
+        about_window.geometry("700x600")
+        about_window.configure(bg=MODERN_COLORS['bg_primary'])
+        about_window.resizable(True, True)
+
+        header_frame = tk.Frame(about_window, bg=MODERN_COLORS['accent_blue'], height=60)
+        header_frame.pack(fill=tk.X)
+        header_frame.pack_propagate(False)
+
+        title_label = tk.Label(header_frame, text="汉化辅助编辑器",
+                              bg=MODERN_COLORS['accent_blue'], fg='#ffffff',
+                              font=("Microsoft YaHei", 18, "bold"), pady=15)
+        title_label.pack()
+
+        version_frame = tk.Frame(about_window, bg=MODERN_COLORS['bg_secondary'])
+        version_frame.pack(fill=tk.X, pady=10)
+
+        version_label = tk.Label(version_frame, text="版本 8.0  |  [B站偷吃布丁的涅普缇努制作,第四梦境协助修改]",
+                                bg=MODERN_COLORS['bg_secondary'], fg=MODERN_COLORS['accent_green'],
+                                font=("Microsoft YaHei", 11, "bold"))
+        version_label.pack(pady=8)
+
+        info_text = """汉化辅助编辑器
 
 一个简单的二进制文件编辑器
 
+
 我已经把所有不可打印字符全部改成紫色高亮了
+
 目前我在汉化某些程序的时候会先把0A和0D这种字节替换成20空格,
+
 只有把不可打印字符替换成空格才能框选整段文本,搜索到匹配结果,
+
 此外大家需要注意某些c/c++程序里面经常会出现的%或者&,
+
 %是占位符,占位符通常用于代指命令,会导致你无法搜素到对应文本,&经常和按钮绑定,是个非常缺德的符号,
+
 因为它可能会随机穿插在文本中间,比如File和&可能写成&File,也可能写成F&ile或者Fi&le...
 
+
 某些程序加壳后会搜索不到字符,或者能搜索到但是替换了之后无法正常显示,比如noesis这个程序,
+
 找不到原作者的源码,替换字节根本没有用处,它的壳保护资源不被修改,所以替换了无效。
+
 挺好的一个模型纹理查看器,可惜了。
 
+
 还有些程序不支持中文字体,一汉化就乱码,比如Imgui的程序,优先修改为雅黑等支持中文的字体。
+
 废话,编译后能改还用找我吗,在编译前改成雅黑字体,比如Fmodel的3D查看器,我就是改成雅黑后汉化的。
+
 否则你看到的会是???也有些程序无论怎么替换字节都会乱码,比如UE Viewer,这个程序的标题栏汉化会乱码,
+
 非标题栏汉化不会乱码,到现在我都搞不懂这个程序到底是咋回事。
 
-自求多福吧,有了我这个工具你可以省很大的力气,在ResourceHacker这类本地化工具无法显示菜单、对话框
-和字串表的时候再使用我这个工具去汉化,能使用傻瓜式的本地化工具尽量使用,至于c# NET程序可以尝试使用
-dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化很多程序了,UniTranslator是某大佬
-制作的一个专门对付XAML/BAML这种WPF程序的汉化工具,能用就用,不能用再用我这个工具。Delphi程序可以试
-试localizator,这个工具是给Delphi程序制作汉化补丁的,生成的补丁文件是.CHS格式的,千万不要删了。
+有人问我有什么软件或者工具能突破字符串长度限制，我是这样回答的：
+
+第一，逆向修改，这个我不会。第二，使用源码重新编译这是最靠谱的，但是找不到源码或者找到了源码自
+
+己不会构建这才是一个非常困难的问题。第三，如果是RC窗体程序尝试使用resourcehacker汉化，它可以改
+
+变字符串长度。第四，如果是NET程序，使用dnspy反编译修改，它可以改变字符串长度。第五，如果是WPF
+
+窗体程序，使用UniTranslator可以修改字符串长度并汉化dnspy解决不了的baml二进制文件。第六，如果是
+
+Delphi窗体程序，也可以使用resourcehacker或者localizator尝试汉化。第七，如果是命令行程序或者Qt 
+
+C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉化，但是不一定能成功，有些程序修改后会出
+
+错无法运行。第八，hook汉化，内存劫持技术，它可以无视字符串长度，强行在内存中劫持并汉化。
+
 
 不可打印字符及对应字节:
+
 0x00-NUL(空)  0x01-SOH(标题)  0x02-STX(正文始)  0x03-ETX(正文终)
+
 0x04-EOT(传输终)  0x05-ENQ(询问) 0x06-ACK(确认) 0x07-BEL(响铃)
+
 0x08-BS(退格) 0x09-TAB(制表) 0x0A-LF(换行) 0x0B-VT(垂直制表)
+
 0x0C-FF(换页) 0x0D-CR(回车) 0x0E-SO(移出) 0x0F-SI(移入)
+
 0x10-DLE(转义) 0x11-DC1(设备1) 0x12-DC2(设备2) 0x13-DC3(设备3)
+
 0x14-DC4(设备4) 0x15-NAK(否定) 0x16-SYN(同步) 0x17-ETB(块终)
+
 0x18-CAN(取消) 0x19-EM(介质终) 0x1A-SUB(替换) 0x1B-ESC(转义)
+
 0x1C-FS(文件分) 0x1D-GS(组分) 0x1E-RS(记录分) 0x1F-US(单元分)
-0x7F-DEL(删除) 
+
+0x7F-DEL(删除)
+
 
 常见标点符号及对应UTF-8字节:
+
 0x20-空格  0x21-!  0x22-"  0x23-#  0x24-$  0x25-%  0x26-&  0x27-'
+
 0x28-(     0x29-)  0x2A-*  0x2B-+  0x2C-,  0x2D--  0x2E-.  0x2F-/
+
 0x3A-:     0x3B-;  0x3C-<  0x3D-=  0x3E->  0x3F-?  0x40-@  0x5B-[
+
 0x5C-\\    0x5D-]  0x5E-^  0x5F-_  0x60-`  0x7B-{  0x7C-|  0x7D-}
+
 0x7E-~          0xA7-§(章节)   0xA9-©(版权)    0xAE-®(商标)
+
 0xB1-±(正负)      0xB5-µ(微)      0xD7-×(乘)     0xF7-÷(除)"""
 
-        messagebox.showinfo("关于", about_text)
+        text_frame = tk.Frame(about_window, bg=MODERN_COLORS['bg_primary'])
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        text_widget = tk.Text(text_frame, bg=MODERN_COLORS['bg_primary'], fg=MODERN_COLORS['text_primary'],
+                             font=("Microsoft YaHei", 10), wrap=tk.WORD, relief=tk.FLAT,
+                             highlightthickness=0)
+        text_widget.insert(tk.END, info_text)
+        text_widget.config(state=tk.DISABLED)
+        
+        scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=text_widget.yview)
+        text_widget.configure(yscrollcommand=scrollbar.set)
+        
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        credit_frame = tk.Frame(about_window, bg=MODERN_COLORS['bg_tertiary'])
+        credit_frame.pack(fill=tk.X, pady=0)
+
+        credit_label = tk.Label(credit_frame, text="B站: 偷吃布丁的涅普缇努 | 协助: 第四梦境",
+                               bg=MODERN_COLORS['bg_tertiary'], fg=MODERN_COLORS['text_secondary'],
+                               font=("Microsoft YaHei", 9), pady=8)
+        credit_label.pack()
+
+        about_window.transient(self.root)
+        about_window.bind("<Escape>", lambda e: about_window.destroy())
+        text_widget.bind("<MouseWheel>", lambda e: text_widget.yview_scroll(int(-1*(e.delta/120)), "units"))
 
     def validate_input(self, event=None):
         self.update_input_fields_state()
@@ -2295,19 +2656,13 @@ dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化�
                 start = pos + 1
 
         self.current_matches = matches
-        for match in matches:
-            self.results_tree.insert("", tk.END, values=(
-                f"0x{match['pos']:08X}",
-                bytes_to_hex(match['bytes'])
-            ))
-
-        self.results_count_label.config(text=f"匹配数量:{len(matches)}")
 
         if matches:
             self.update_status(f"找到{len(matches)}个匹配项")
-            self.results_tree.selection_set(self.results_tree.get_children()[0])
-            self.results_tree.focus(self.results_tree.get_children()[0])
-            self.on_result_select(None)
+            self.current_match_index = 0
+            match = self.current_matches[self.current_match_index]
+            self.hex_viewer.highlight_range(match["pos"], match["pos"] + len(match["bytes"]) - 1)
+            self.hex_viewer.scroll_to_address(match["pos"])
         else:
             self.update_status("未找到匹配项") 
 
@@ -2316,22 +2671,12 @@ dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化�
             self.find_matches()
             return
 
-        if not self.results_tree.get_children():
-            return
+        if self.current_match_index < len(self.current_matches) - 1:
+            self.current_match_index += 1
+        else:
+            self.current_match_index = 0
 
-        selected = self.results_tree.selection()
-        if not selected:
-            self.results_tree.selection_set(self.results_tree.get_children()[0])
-            self.results_tree.focus(self.results_tree.get_children()[0])
-            return
-
-        children = list(self.results_tree.get_children())
-        current_idx = children.index(selected[0])
-
-        next_idx = (current_idx + 1) % len(children)
-        self.results_tree.selection_set(children[next_idx])
-        self.results_tree.focus(children[next_idx])
-        match = self.current_matches[next_idx]
+        match = self.current_matches[self.current_match_index]
         self.hex_viewer.highlight_range(match["pos"], match["pos"] + len(match["bytes"]) - 1)
         self.hex_viewer.scroll_to_address(match["pos"])
         self.update_input_fields_state()
@@ -2341,52 +2686,34 @@ dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化�
             self.find_matches()
             return
 
-        if not self.results_tree.get_children():
-            return
+        if self.current_match_index > 0:
+            self.current_match_index -= 1
+        else:
+            self.current_match_index = len(self.current_matches) - 1
 
-        selected = self.results_tree.selection()
-        if not selected:
-            self.results_tree.selection_set(self.results_tree.get_children()[-1])
-            self.results_tree.focus(self.results_tree.get_children()[-1])
-            return
-
-        children = list(self.results_tree.get_children())
-        current_idx = children.index(selected[0])
-
-        prev_idx = (current_idx - 1) % len(children)
-        self.results_tree.selection_set(children[prev_idx])
-        self.results_tree.focus(children[prev_idx])
-        match = self.current_matches[prev_idx]
+        match = self.current_matches[self.current_match_index]
         self.hex_viewer.highlight_range(match["pos"], match["pos"] + len(match["bytes"]) - 1)
         self.hex_viewer.scroll_to_address(match["pos"])
         self.update_input_fields_state()
 
-    def on_result_select(self, event):
-        selected = self.results_tree.selection()
-        if not selected:
-            return
-
-        children = list(self.results_tree.get_children())
-        self.current_match_index = children.index(selected[0])
-
-        match = self.current_matches[self.current_match_index]
-        self.hex_viewer.highlight_range(match["pos"], match["pos"] + len(match["bytes"]) - 1) 
-        self.hex_viewer.scroll_to_address(match["pos"])
-
-    def on_result_click(self, event):
-        self.on_result_select(None)
-
     def clear_matches(self):
-        for item in self.results_tree.get_children():
-            self.results_tree.delete(item)
         self.current_matches = []
         self.current_match_index = -1
-        self.results_count_label.config(text="匹配数量:0")
 
     def update_status(self, message):
         try:
             if hasattr(self, 'status_bar') and self.status_bar.winfo_exists():
                 self.status_bar.config(text=message)
+
+                if '错误' in message or '失败' in message:
+                    self.status_bar.config(fg=MODERN_COLORS['error'], bg=MODERN_COLORS['accent_blue'])
+                elif '成功' in message or '完成' in message:
+                    self.status_bar.config(fg=MODERN_COLORS['success'], bg=MODERN_COLORS['accent_blue'])
+                elif '警告' in message or '请' in message:
+                    self.status_bar.config(fg=MODERN_COLORS['warning'], bg=MODERN_COLORS['accent_blue'])
+                else:
+                    self.status_bar.config(fg='#ffffff', bg=MODERN_COLORS['accent_blue'])
+
                 self.status_bar.update_idletasks()
         except Exception as e:
             print(f"状态栏更新失败:{e}")
@@ -2433,19 +2760,45 @@ dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化�
         original_length = len(find_bytes)
         replace_length = len(replace_bytes)
         encoding = self.encoding_var.get()
+        
         if encoding in ['utf-16le', 'utf-16be'] and (original_length - replace_length) % 2 != 0:
             padding_length = original_length - replace_length
             if padding_length % 2 != 0:
                 padding_length += 1
+        
         if replace_length > original_length:
-            excess_bytes = replace_length - original_length
-            return False, f"替换内容比查找内容多{excess_bytes}字节"
+            if encoding in ['utf-8', 'gbk', 'gb2312', 'big5']:
+                excess_bytes = replace_length - original_length
+                available_zero_bytes = self._count_trailing_zero_bytes(pos + original_length)
+                if available_zero_bytes >= excess_bytes + 1:
+                    for i in range(replace_length):
+                        self.file_data[pos + i] = replace_bytes[i]
+                    return True, bytes_to_hex(replace_bytes)
+                else:
+                    return False, f"需要{excess_bytes}字节扩展,但后面只有{available_zero_bytes}个连续00字节"
+            else:
+                excess_bytes = replace_length - original_length
+                return False, f"替换内容比查找内容多{excess_bytes}字节"
+        
         if replace_length < original_length:
             padding = self.get_padding_bytes(original_length - replace_length)
             replace_bytes = replace_bytes + padding
+        
         for i in range(len(replace_bytes)):
             self.file_data[pos + i] = replace_bytes[i]
+        
         return True, bytes_to_hex(replace_bytes)
+    
+    def _count_trailing_zero_bytes(self, start_pos):
+        """计算从start_pos开始有多少连续的00字节"""
+        count = 0
+        max_count = 100
+        while start_pos + count < len(self.file_data) and count < max_count:
+            if self.file_data[start_pos + count] == 0x00:
+                count += 1
+            else:
+                break
+        return count
 
     def replace_current(self):
         if self.current_match_index < 0 or self.current_match_index >= len(self.current_matches):
@@ -2468,8 +2821,6 @@ dnspy、UniTranslator这种工具,dnspy是反编译工具,我已经用它汉化�
             self.update_status(f"替换失败:{result}")
             return
         match["bytes"] = bytes.fromhex(result.replace(" ", ""))
-        self.results_tree.item(self.results_tree.get_children()[self.current_match_index],
-             values=(f"0x{pos:08X}", result))
         self.hex_viewer.set_data(self.file_data)
         self.hex_viewer.highlight_range(pos, pos + len(match["bytes"]) - 1)
         self._clear_input_fields()
@@ -2711,29 +3062,42 @@ class HexViewer:
         self.ascii_text.yview(*args)
 
     def create_widgets(self):
-        frame = ttk.Frame(self.master)
+        frame = tk.Frame(self.master, bg=MODERN_COLORS['bg_secondary'])
         frame.pack(fill=tk.BOTH, expand=True)
 
-        byte_options_frame = ttk.Frame(frame)
+        byte_options_frame = tk.Frame(frame, bg=MODERN_COLORS['bg_tertiary'])
         byte_options_frame.pack(fill=tk.X, pady=(0, 2))
 
-        ttk.Label(byte_options_frame, text="每行字节数:").pack(side=tk.LEFT, padx=5)
+        tk.Label(byte_options_frame, text="每行字节数:", bg=MODERN_COLORS['bg_tertiary'],
+                fg=MODERN_COLORS['text_primary'], font=("Microsoft YaHei", 10)).pack(side=tk.LEFT, padx=10)
 
         for option in self.bytes_per_line_options:
-            btn = ttk.Button(byte_options_frame, text=str(option),
-                             command=lambda opt=option: self.set_bytes_per_line(opt))
+            btn = tk.Button(byte_options_frame, text=str(option),
+                           command=lambda opt=option: self.set_bytes_per_line(opt),
+                           bg=MODERN_COLORS['bg_secondary'], fg=MODERN_COLORS['text_primary'],
+                           relief=tk.FLAT, activebackground=MODERN_COLORS['accent_blue'],
+                           activeforeground='#ffffff', font=("Consolas", 10), padx=10)
             btn.pack(side=tk.LEFT, padx=2)
 
         self.address_text = tk.Text(frame, width=10, height=self.height, wrap=tk.NONE,
-                                    font=("Consolas", 9), state=tk.DISABLED)
+                                    font=("Consolas", 9), state=tk.DISABLED,
+                                    bg=MODERN_COLORS['bg_primary'], fg=MODERN_COLORS['accent_yellow'],
+                                    insertbackground=MODERN_COLORS['accent_green'],
+                                    relief=tk.FLAT, borderwidth=0)
         self.address_text.pack(side=tk.LEFT, fill=tk.Y)
 
         self.hex_text = tk.Text(frame, width=70, height=self.height, wrap=tk.NONE,
-                                font=("Consolas", 9), state=tk.DISABLED)
+                                font=("Consolas", 9), state=tk.DISABLED,
+                                bg=MODERN_COLORS['bg_primary'], fg=MODERN_COLORS['text_primary'],
+                                insertbackground=MODERN_COLORS['accent_green'],
+                                relief=tk.FLAT, borderwidth=0)
         self.hex_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         self.ascii_text = tk.Text(frame, width=self.bytes_per_line, height=self.height, wrap=tk.NONE,
-                                  font=("Consolas", 9), state=tk.DISABLED)
+                                  font=("Consolas", 9), state=tk.DISABLED,
+                                  bg=MODERN_COLORS['bg_primary'], fg=MODERN_COLORS['accent_orange'],
+                                  insertbackground=MODERN_COLORS['accent_green'],
+                                  relief=tk.FLAT, borderwidth=0)
         self.ascii_text.pack(side=tk.LEFT, fill=tk.Y)
 
         self.vscrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL,
@@ -2744,12 +3108,20 @@ class HexViewer:
         self.address_text.config(yscrollcommand=self.vscrollbar.set)
         self.ascii_text.config(yscrollcommand=self.vscrollbar.set)
 
-        self.hex_text.tag_configure("highlight", background="orange")
-        self.ascii_text.tag_configure("highlight", background="skyblue")
-        self.hex_text.tag_configure("non_printable", foreground="purple")
-        self.ascii_text.tag_configure("non_printable", foreground="purple")
+        self.hex_text.tag_configure("highlight", background=MODERN_COLORS['highlight'], foreground='#ffffff')
+        self.ascii_text.tag_configure("highlight", background=MODERN_COLORS['highlight'], foreground='#ffffff')
+        self.hex_text.tag_configure("non_printable", foreground=MODERN_COLORS['accent_purple'])
+        self.ascii_text.tag_configure("non_printable", foreground=MODERN_COLORS['accent_purple'])
 
-        for byte_value, color in self.byte_colors.items():
+        modern_byte_colors = {
+            0x0A: '#569cd6',
+            0x0D: '#c586c0',
+            0x00: '#f14c4c',
+            0xFF: '#ff79c6',
+            0x20: '#50fa7b',
+        }
+
+        for byte_value, color in modern_byte_colors.items():
             self.hex_text.tag_configure(f"byte_{byte_value:02X}", foreground=color)
             self.ascii_text.tag_configure(f"byte_{byte_value:02X}", foreground=color)
         for (byte1, byte2), color in self.utf16_colors.items():
@@ -2912,11 +3284,15 @@ class HexViewer:
             self.ascii_text.yview(*args)
 
     def create_context_menu(self):
-        self.context_menu = tk.Menu(self.master, tearoff=0)
-        self.context_menu.add_command(label="修改为空格(0x20)", command=self.convert_to_space)
-        self.context_menu.add_command(label="插入字节", command=self.insert_bytes)
-        self.context_menu.add_command(label="删除字节", command=self.delete_bytes)
-        self.context_menu.add_command(label="导出指定范围字节", command=self.export_range_bytes)
+        self.context_menu = tk.Menu(self.master, tearoff=0, bg=MODERN_COLORS['bg_secondary'],
+                                   fg=MODERN_COLORS['text_primary'],
+                                   activebackground=MODERN_COLORS['accent_blue'],
+                                   activeforeground='#ffffff',
+                                   font=("Microsoft YaHei", 10))
+        self.context_menu.add_command(label="✏️ 修改为空格 (0x20)", command=self.convert_to_space)
+        self.context_menu.add_command(label="➕ 插入字节", command=self.insert_bytes)
+        self.context_menu.add_command(label="➖ 删除字节", command=self.delete_bytes)
+        self.context_menu.add_command(label="📤 导出指定范围字节", command=self.export_range_bytes)
         self.context_menu.add_separator()
     def on_hex_right_click(self, event):
         if not hasattr(self, 'data') or not self.data:
@@ -3031,7 +3407,50 @@ class HexViewer:
 def bytes_to_hex(byte_data):
     return ' '.join([f"{b:02X}" for b in byte_data])
 
+def get_config_file_path():
+    """获取配置文件路径"""
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(app_dir, 'editor_config.json')
+
+def load_config():
+    """加载用户配置"""
+    config_file = get_config_file_path()
+    default_config = {
+        'theme': 'dark',
+        'encoding': 'utf-8',
+        'scan_mode': 'ansi',
+        'input_type': '字符串'
+    }
+    if os.path.exists(config_file):
+        try:
+            import json
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                return {**default_config, **config}
+        except Exception:
+            return default_config
+    return default_config
+
+def save_config(config):
+    """保存用户配置"""
+    config_file = get_config_file_path()
+    try:
+        import json
+        with open(config_file, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"保存配置失败: {e}")
+
 if __name__ == "__main__":
+    config = load_config()
+    
+    if config.get('theme') == 'light':
+        MODERN_COLORS = MODERN_COLORS_LIGHT
+        CURRENT_THEME = 'light'
+    else:
+        MODERN_COLORS = MODERN_COLORS_DARK
+        CURRENT_THEME = 'dark'
+    
     try:
         tkinterdnd2 = __import__('tkinterdnd2')
         TkinterDnD = getattr(tkinterdnd2, 'TkinterDnD')
@@ -3040,5 +3459,9 @@ if __name__ == "__main__":
         import tkinter as tk
         root = tk.Tk()
         print("警告:tkinterdnd2未安装,拖拽功能将不可用")
-    app = BinaryEditorApp(root)
+    
+    app = BinaryEditorApp(root, config=config)
+    
+    app.switch_theme(CURRENT_THEME)
+    
     root.mainloop()

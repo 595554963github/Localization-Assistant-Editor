@@ -284,6 +284,15 @@ class BinaryEditorApp:
         style.map("Treeview", background=[('selected', MODERN_COLORS['selection'])], foreground=[('selected', '#ffffff')])
         style.map("Treeview.Heading", background=[('active', MODERN_COLORS['bg_active'])])
 
+        # 修复 Combobox 下拉列表在 Windows 暗色主题下的白色空白问题
+        self.root.option_add('*TCombobox*Listbox.background', MODERN_COLORS['bg_secondary'])
+        self.root.option_add('*TCombobox*Listbox.foreground', MODERN_COLORS['text_primary'])
+        self.root.option_add('*TCombobox*Listbox.selectBackground', MODERN_COLORS['selection'])
+        self.root.option_add('*TCombobox*Listbox.selectForeground', '#ffffff')
+        self.root.option_add('*TCombobox*Listbox.relief', 'flat')
+        self.root.option_add('*TCombobox*Listbox.borderwidth', '1')
+        self.root.option_add('*TCombobox*Listbox.highlightThickness', '0')
+
     def add_tooltip(self, widget, text):
         ToolTip(widget, text)
 
@@ -1925,7 +1934,7 @@ class BinaryEditorApp:
             ',': ',', '…': '...','∶': ':', 
             '﹕': ':', '﹔': ';', '﹖': '?', '﹗': '!', 
             '﹏': '~', '﹑': ',','﹒': '.','‧': '.', 
-            '，': ',', 
+            ',': ',', 
         })
         processed_text = cleaned_text.translate(translation_table)
         return processed_text
@@ -2312,21 +2321,21 @@ class BinaryEditorApp:
 
 非标题栏汉化不会乱码,到现在我都搞不懂这个程序到底是咋回事。
 
-有人问我有什么软件或者工具能突破字符串长度限制，我是这样回答的：
+有人问我有什么软件或者工具能突破字符串长度限制,我是这样回答的：
 
-第一，逆向修改，这个我不会。第二，使用源码重新编译这是最靠谱的，但是找不到源码或者找到了源码自
+第一,逆向修改,这个我不会。第二,使用源码重新编译这是最靠谱的,但是找不到源码或者找到了源码自
 
-己不会构建这才是一个非常困难的问题。第三，如果是RC窗体程序尝试使用resourcehacker汉化，它可以改
+己不会构建这才是一个非常困难的问题。第三,如果是RC窗体程序尝试使用resourcehacker汉化,它可以改
 
-变字符串长度。第四，如果是NET程序，使用dnspy反编译修改，它可以改变字符串长度。第五，如果是WPF
+变字符串长度。第四,如果是NET程序,使用dnspy反编译修改,它可以改变字符串长度。第五,如果是WPF
 
-窗体程序，使用UniTranslator可以修改字符串长度并汉化dnspy解决不了的baml二进制文件。第六，如果是
+窗体程序,使用UniTranslator可以修改字符串长度并汉化dnspy解决不了的baml二进制文件。第六,如果是
 
-Delphi窗体程序，也可以使用resourcehacker或者localizator尝试汉化。第七，如果是命令行程序或者Qt 
+Delphi窗体程序,也可以使用resourcehacker或者localizator尝试汉化。第七,如果是命令行程序或者Qt 
 
-C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉化，但是不一定能成功，有些程序修改后会出
+C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉化,但是不一定能成功,有些程序修改后会出
 
-错无法运行。第八，hook汉化，内存劫持技术，它可以无视字符串长度，强行在内存中劫持并汉化。
+错无法运行。第八,hook汉化,内存劫持技术,它可以无视字符串长度,强行在内存中劫持并汉化。
 
 
 不可打印字符及对应字节:
@@ -3152,7 +3161,7 @@ class HexViewer:
         self.app.root.geometry(f"{new_window_width}x{current_window_height}")   
         hex_width = bytes_per_line * 3
         self.hex_text.config(width=hex_width)   
-        self.app.update_status(f"已切换到每行{bytes_per_line}字节模式，十六进制视图宽度已调整")
+        self.app.update_status(f"已切换到每行{bytes_per_line}字节模式,十六进制视图宽度已调整")
 
     def _on_scrollbar(self, *args):
         self.vscrollbar.set(*args)

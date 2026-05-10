@@ -24,9 +24,8 @@ Unicode就是点分割的字符串，比如File会显示为F.i.l.e.，ANSI就和
 如果可执行程序或者dll文件被加壳了，替换字节可能会失效，有些壳会保护资源防止被修改，需要先脱壳再汉化，本地化工具汉化程序虽然省事，但不是什么程序都可以拿来汉化，
 有些程序根本不显示菜单、对话框、字串表，或者无法反编译，这时候使用字节替换的方式去汉化程序也是一件不可思议的事。
 
+运行pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple把清华大学镜像源设置为默认源
 
-tkinter版本运行pip install tkinterdnd2 -i https://pypi.tuna.tsinghua.edu.cn/simple
+tkinter版本运行pip install tkinterdnd2
 
-Qt版本运行pip install PySide6 pyhexedit -i https://pypi.tuna.tsinghua.edu.cn/simple
-
-加-i https://pypi.tuna.tsinghua.edu.cn/simple是为了给你下载提速，
+Qt版本运行pip install PySide6 pyhexedit

@@ -1182,7 +1182,7 @@ class BinaryEditorQt(QMainWindow):
         self.save_history_state()
         del self.file_data[begin:begin + count]
         self.hex_editor.setData(self.file_data)
-        self.update_status(f"已从位置 0x{begin:08X} 删除 {count} 个字节")
+        self.update_status(f"已从位置0x{begin:08X}删除{count}个字节")
 
     def copy_as_ascii(self):
         begin, end = self.hex_editor.getSelection()
@@ -1192,7 +1192,7 @@ class BinaryEditorQt(QMainWindow):
         ascii_str = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in selected_data)
         clipboard = QApplication.clipboard()
         clipboard.setText(ascii_str)
-        self.update_status(f"已复制 {end - begin} 字节为ASCII")
+        self.update_status(f"已复制{end - begin}字节为ASCII")
 
     def save_history_state(self):
         if self.history_index < len(self.history) - 1:
@@ -1216,7 +1216,7 @@ class BinaryEditorQt(QMainWindow):
         return count
 
     def get_padding_bytes(self, length):
-        return bytes(length)
+        return b'\x20' * length
 
     def _replace_at_position(self, pos, find_bytes, replace_bytes, encoding):
         original_length = len(find_bytes)
@@ -1829,7 +1829,7 @@ class BinaryEditorQt(QMainWindow):
                         pos += original_length
                         continue
                 elif new_replace_length < original_length:
-                    padding = bytes(original_length - new_replace_length)
+                    padding = b'\x20' * (original_length - new_replace_length)
                     data[pos:pos+original_length] = replace_bytes + padding
                 else:
                     data[pos:pos+original_length] = replace_bytes
@@ -1842,7 +1842,7 @@ class BinaryEditorQt(QMainWindow):
                 self.hex_editor.setData(self.file_data)
                 search_results = []
                 result_list.clear()
-                self.update_status(f"已替换 {count} 项")
+                self.update_status(f"已替换{count}项")
             else:
                 QMessageBox.information(dialog, "结果", "未找到匹配项")
 
@@ -1879,7 +1879,7 @@ class BinaryEditorQt(QMainWindow):
         end_entry.setFixedWidth(180)
         input_layout.addRow("结束地址(16进制):", end_entry)
 
-        example_label = QLabel("示例: 0x00000100 到 0x00000200")
+        example_label = QLabel("示例:0x00000100到0x00000200")
         example_label.setStyleSheet("color: gray;")
         input_layout.addRow("", example_label)
 

@@ -1215,8 +1215,17 @@ class BinaryEditorQt(QMainWindow):
                 break
         return count
 
-    def get_padding_bytes(self, length):
-        return b'\x20' * length
+    def get_padding_bytes(self, length, encoding='utf-8'):
+        if encoding.lower() == 'utf-16le':
+            if length % 2 != 0:
+                length += 1
+            return b'\x20\x00' * (length // 2)
+        elif encoding.lower() == 'utf-16be':
+            if length % 2 != 0:
+                length += 1
+            return b'\x00\x20' * (length // 2)
+        else:
+            return b'\x20' * length
 
     def _replace_at_position(self, pos, find_bytes, replace_bytes, encoding):
         original_length = len(find_bytes)
@@ -1243,7 +1252,7 @@ class BinaryEditorQt(QMainWindow):
                 return False, f"替换内容比查找内容多{excess_bytes}字节"
         
         if replace_length < original_length:
-            padding = self.get_padding_bytes(original_length - replace_length)
+            padding = self.get_padding_bytes(original_length - replace_length, encoding)
             replace_bytes = replace_bytes + padding
         
         self.save_history_state()
@@ -1829,7 +1838,7 @@ class BinaryEditorQt(QMainWindow):
                         pos += original_length
                         continue
                 elif new_replace_length < original_length:
-                    padding = b'\x20' * (original_length - new_replace_length)
+                    padding = self.get_padding_bytes(original_length - new_replace_length, encoding)
                     data[pos:pos+original_length] = replace_bytes + padding
                 else:
                     data[pos:pos+original_length] = replace_bytes

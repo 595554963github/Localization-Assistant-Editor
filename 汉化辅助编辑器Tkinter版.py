@@ -188,7 +188,7 @@ class ModernButton(tk.Button):
 class BinaryEditorApp:
     def __init__(self, root, config=None):
         self.root = root
-        self.root.title("汉化辅助编辑器 v8.0")
+        self.root.title("汉化辅助编辑器 v9.0")
         self.root.configure(bg=MODERN_COLORS['bg_primary'])
 
         if config is None:
@@ -201,12 +201,8 @@ class BinaryEditorApp:
         except:
             self.scale_factor = 1.0
 
-        self.base_font_size = int(11 * self.scale_factor)
-        self.zoom_level = 1.0
-        self.zoom_factors = [0.9, 1.0]
-
         initial_width = int(1400 * self.scale_factor)
-        initial_height = int(1000 * self.scale_factor * self.zoom_level)
+        initial_height = int(1000 * self.scale_factor)
         self.root.geometry(f"{initial_width}x{initial_height}")
         self.root.minsize(int(900 * self.scale_factor), int(650 * self.scale_factor))
 
@@ -234,6 +230,9 @@ class BinaryEditorApp:
         self.find_mode = "text"
         self.replace_buttons_disabled = False
         self.replace_buttons_clicked = False
+        self.edit_dialog = None
+        self.result_tree = None
+        self._syncing_tree = False
 
         self.input_type_options = ['字符串', '十六进制']
         self.input_type_var = tk.StringVar(value=config.get('input_type', "字符串"))
@@ -256,7 +255,7 @@ class BinaryEditorApp:
         self.common_abbr = ['ok', 'hi', 'bye', 'yes', 'no', 'id', 'vs', 'am', 'pm']
         self.create_widgets()
         self.setup_drag_and_drop()
-        self.update_status("就绪 - 请打开文件或拖拽文件到窗口")
+        self.update_status("已就绪,请打开文件或拖拽文件到窗口")
 
     def _setup_modern_style(self):
         style = ttk.Style()
@@ -284,7 +283,6 @@ class BinaryEditorApp:
         style.map("Treeview", background=[('selected', MODERN_COLORS['selection'])], foreground=[('selected', '#ffffff')])
         style.map("Treeview.Heading", background=[('active', MODERN_COLORS['bg_active'])])
 
-        # 修复 Combobox 下拉列表在 Windows 暗色主题下的白色空白问题
         self.root.option_add('*TCombobox*Listbox.background', MODERN_COLORS['bg_secondary'])
         self.root.option_add('*TCombobox*Listbox.foreground', MODERN_COLORS['text_primary'])
         self.root.option_add('*TCombobox*Listbox.selectBackground', MODERN_COLORS['selection'])
@@ -388,7 +386,7 @@ class BinaryEditorApp:
                 try:
                     text = segment_bytes.decode('ascii')
                     if self._is_basic_english(text):
-                        if len(text) > 200:
+                        if len(text) > 1000:
                             continue
                         is_printable = all(32 <= ord(c) <= 126 for c in text)
                         if not is_printable:
@@ -896,14 +894,8 @@ class BinaryEditorApp:
                 truncated_display
             ))
     
-        tree_scrollbar = None
-        for child in self.sidebar_frame._content_frame.winfo_children():
-            if isinstance(child, ttk.Scrollbar):
-                tree_scrollbar = child
-                break
-    
-        if tree_scrollbar:
-            self.string_tree.configure(yscrollcommand=tree_scrollbar.set)
+        if hasattr(self, 'tree_scrollbar'):
+            self.string_tree.configure(yscrollcommand=self._on_string_tree_scroll)
     
         if self.string_tree.get_children():
             self.string_tree.selection_set(self.string_tree.get_children()[0])
@@ -1086,10 +1078,150 @@ class BinaryEditorApp:
         self.replace_hex_entry.config(state=tk.NORMAL)
         self.replace_buttons_disabled = False
 
+    def show_edit_dialog(self, prefill_pos=None, prefill_end=None):
+        if self.edit_dialog is None:
+            return
+        self.edit_dialog.deiconify()
+        self.edit_dialog.lift()
+        self.edit_dialog.focus_set()
+        if prefill_pos is not None and prefill_end is not None:
+            self._prefill_from_selection(prefill_pos, prefill_end)
+        elif self.current_matches:
+            self._refresh_result_tree()
+        self.update_status("编辑修改窗口已打开(Ctrl+E可随时唤出/隐藏)")
+
+    def _withdraw_edit_dialog(self):
+        if self.edit_dialog is None:
+            return
+        self.edit_dialog.withdraw()
+        self.update_status("编辑修改窗口已隐藏,按 Ctrl+E 或菜单\"编辑修改\"可再次打开")
+
+    def use_hex_selection(self):
+        hv = getattr(self, 'hex_viewer', None)
+        if hv is None or getattr(hv, 'sel_start', -1) < 0 or getattr(hv, 'sel_end', -1) < 0:
+            self.update_status("请先在十六进制视图按住左键框选一段字节")
+            return
+        self.show_edit_dialog(hv.sel_start, hv.sel_end)
+
+    def _prefill_from_selection(self, start, end):
+        if not self.file_data:
+            return
+        if start < 0:
+            start = 0
+        if end >= len(self.file_data):
+            end = len(self.file_data) - 1
+        if end < start:
+            start, end = end, start
+        encoding = self.encoding_var.get()
+        if encoding in ['utf-16le', 'utf-16be']:
+            if start % 2 != 0:
+                start -= 1
+            if (end + 1 - start) % 2 != 0:
+                end -= 1
+        raw = bytes(self.file_data[start:end + 1])
+        self.find_text.config(state=tk.NORMAL)
+        self.find_text.delete("1.0", tk.END)
+        self.find_hex_entry.config(foreground="black")
+        self.find_hex_entry.delete(0, tk.END)
+        self.find_hex_entry.insert(0, bytes_to_hex(raw))
+        preview = None
+        try:
+            text = raw.decode(encoding)
+            if not any(c in text for c in '\x00\t\n\r'):
+                preview = text
+        except Exception:
+            preview = None
+        if preview is not None:
+            self.find_mode = "text"
+            self.input_type_var.set("字符串")
+            self.update_input_fields_state()
+            self.find_text.insert("1.0", preview)
+            self.current_find_text = preview
+        else:
+            self.find_mode = "hex"
+            self.input_type_var.set("十六进制")
+            self.update_input_fields_state()
+            self.current_find_text = ""
+
+        self.find_matches()
+
+        target_idx = -1
+        for idx, match in enumerate(self.current_matches):
+            if match["pos"] == start:
+                target_idx = idx
+                break
+        if target_idx >= 0:
+            self.current_match_index = target_idx
+            match = self.current_matches[target_idx]
+            self.hex_viewer.highlight_range(match["pos"], match["pos"] + len(match["bytes"]) - 1)
+            self.hex_viewer.scroll_to_address(match["pos"])
+            self._refresh_result_tree()
+            self.update_status(f"已添加选区到修改窗口:0x{start:08X}-0x{end:08X},共{len(self.current_matches)}个相同内容,已定位第{target_idx + 1}个")
+        else:
+            self.update_status(f"已添加选区到修改窗口:0x{start:08X}-0x{end:08X},但未找到该内容")
+
+        self.replace_button.config(state=tk.NORMAL)
+        self.replace_all_button.config(state=tk.NORMAL)
+        self.replace_text.config(state=tk.NORMAL)
+        self.replace_hex_entry.config(state=tk.NORMAL)
+        self.replace_buttons_disabled = False
+
+    def _match_preview(self, raw):
+        if not raw:
+            return ""
+        try:
+            text = raw.decode(self.encoding_var.get(), errors='replace')
+        except Exception:
+            text = raw.decode('latin1', errors='replace')
+        text = (text.replace('\x00', '\\0').replace('\r', '\\r')
+                    .replace('\n', '\\n').replace('\t', '\\t'))
+        if len(text) > 40:
+            text = text[:37] + "..."
+        return text
+
+    def _refresh_result_tree(self):
+        if self.result_tree is None or self._syncing_tree:
+            return
+        self._syncing_tree = True
+        try:
+            for item in self.result_tree.get_children():
+                self.result_tree.delete(item)
+            for idx, match in enumerate(self.current_matches):
+                pos = match.get("pos", 0)
+                raw = match.get("bytes", b"")
+                self.result_tree.insert("", tk.END, iid=str(idx),
+                                        values=(idx + 1, f"0x{pos:08X}", len(raw), self._match_preview(raw)))
+            if 0 <= self.current_match_index < len(self.current_matches):
+                iid = str(self.current_match_index)
+                self.result_tree.selection_set(iid)
+                self.result_tree.focus(iid)
+                self.result_tree.see(iid)
+        finally:
+            self._syncing_tree = False
+
+    def on_result_selected(self, event=None):
+        if self._syncing_tree or self.result_tree is None:
+            return
+        selection = self.result_tree.selection()
+        if not selection:
+            return
+        try:
+            idx = int(selection[0])
+        except (ValueError, TypeError):
+            return
+        if idx < 0 or idx >= len(self.current_matches):
+            return
+        self.current_match_index = idx
+        match = self.current_matches[idx]
+        self.hex_viewer.highlight_range(match["pos"], match["pos"] + len(match["bytes"]) - 1)
+        self.hex_viewer.scroll_to_address(match["pos"])
+        self.update_status(f"已定位到第{idx + 1}个匹配项:0x{match['pos']:08X}")
+
     def on_encoding_changed(self, event=None):
         self.hex_viewer.highlight_start = -1
         self.hex_viewer.highlight_end = -1   
         self.clear_matches()
+        self._refresh_result_tree()
         self.update_display()
         current_encoding = self.encoding_var.get()
         if current_encoding in ['utf-16le', 'utf-16be']:
@@ -1104,6 +1236,7 @@ class BinaryEditorApp:
         self.replace_text.delete("1.0", tk.END)
         self.replace_hex_entry.delete(0, tk.END)
         self.clear_matches()
+        self._refresh_result_tree()
         self.input_type_var.set("字符串")
         self.find_mode = "text"
         self.update_input_fields_state()
@@ -1111,7 +1244,7 @@ class BinaryEditorApp:
             self.hex_viewer.highlight_start = -1
             self.hex_viewer.highlight_end = -1
             self.hex_viewer.update_view()
-        self.update_status("编码/输入类型已切换,查找模式和框选状态已重置")
+        self.update_status("编码/输入类型已切换,输入模式和框选状态已重置")
 
     def create_widgets(self):
         menubar = tk.Menu(self.root, bg=MODERN_COLORS['bg_secondary'], fg=MODERN_COLORS['text_primary'],
@@ -1139,6 +1272,7 @@ class BinaryEditorApp:
         edit_menu.add_separator()
         edit_menu.add_command(label="🔧 CP932乱码修复器", command=self.show_cp932_converter, accelerator="F7")
         edit_menu.add_command(label="🔧 UTF-16字符串转换器", command=self.show_clipboard_converter, accelerator="F8")
+        edit_menu.add_command(label="🛠 编辑修改", command=self.show_edit_dialog, accelerator="Ctrl+E")
         menubar.add_cascade(label="🔧 选择功能", menu=edit_menu)
 
         help_menu = tk.Menu(menubar, tearoff=0, bg=MODERN_COLORS['bg_secondary'],
@@ -1160,6 +1294,7 @@ class BinaryEditorApp:
         self.root.bind("<Control-T>", lambda e: self.save_file_as())
         self.root.bind("<Control-Up>", lambda e: self.prev_string())
         self.root.bind("<Control-Down>", lambda e: self.next_string())
+        self.root.bind("<Control-e>", lambda e: self.show_edit_dialog())
 
         toolbar_frame = tk.Frame(self.root, bg=MODERN_COLORS['bg_secondary'], relief=tk.FLAT, height=45)
         toolbar_frame.pack(side=tk.TOP, fill=tk.X, padx=0, pady=0)
@@ -1167,23 +1302,6 @@ class BinaryEditorApp:
         title_label = tk.Label(toolbar_frame, text="⚡ 汉化辅助编辑器", bg=MODERN_COLORS['bg_secondary'],
                               fg=MODERN_COLORS['accent_green'], font=("Microsoft YaHei", 14, "bold"), padx=15)
         title_label.pack(side=tk.LEFT, pady=8)
-
-        zoom_frame = tk.Frame(toolbar_frame, bg=MODERN_COLORS['bg_secondary'])
-        zoom_frame.pack(side=tk.RIGHT, padx=15, pady=8)
-        tk.Label(zoom_frame, text="缩放:", bg=MODERN_COLORS['bg_secondary'],
-                fg=MODERN_COLORS['text_secondary'], font=("Microsoft YaHei", 10)).pack(side=tk.LEFT, padx=(0, 5))
-        self.zoom_var = tk.StringVar(value="100%")
-        zoom_combo = ttk.Combobox(zoom_frame, textvariable=self.zoom_var,
-                             values=["90%", "100%"],
-                             state="readonly", width=7)
-        zoom_combo.pack(side=tk.LEFT, padx=2)
-        zoom_combo.bind("<<ComboboxSelected>>", self.on_zoom_changed)
-        tk.Button(zoom_frame, text="−", width=2, height=1, bg=MODERN_COLORS['bg_tertiary'],
-                 fg=MODERN_COLORS['text_primary'], relief=tk.FLAT, command=self.zoom_out,
-                 activebackground=MODERN_COLORS['accent_blue'], font=("Arial", 12)).pack(side=tk.LEFT, padx=2)
-        tk.Button(zoom_frame, text="+", width=2, height=1, bg=MODERN_COLORS['bg_tertiary'],
-                 fg=MODERN_COLORS['text_primary'], relief=tk.FLAT, command=self.zoom_in,
-                 activebackground=MODERN_COLORS['accent_blue'], font=("Arial", 12)).pack(side=tk.LEFT, padx=2)
 
         info_frame = tk.Frame(toolbar_frame, bg=MODERN_COLORS['bg_secondary'])
         info_frame.pack(side=tk.RIGHT, padx=20, pady=8)
@@ -1211,39 +1329,35 @@ class BinaryEditorApp:
 
         left_container = tk.Frame(main_container, bg=MODERN_COLORS['bg_primary'])
         left_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        left_container.grid_rowconfigure(0, weight=0)
-        left_container.grid_rowconfigure(1, weight=1)
+        left_container.grid_rowconfigure(0, weight=1)
         left_container.grid_columnconfigure(0, weight=1)
 
-        file_info_frame = ModernLabelFrame(left_container, text="文件信息", bg=MODERN_COLORS['bg_primary'])
-        file_info_frame.grid(row=0, column=0, sticky=tk.EW, pady=(0, 2))
-
         hex_frame = ModernLabelFrame(left_container, text="十六进制视图", bg=MODERN_COLORS['bg_primary'])
-        hex_frame.grid(row=1, column=0, sticky=tk.NSEW, pady=(0, 2))
+        hex_frame.grid(row=0, column=0, sticky=tk.NSEW, pady=(0, 2))
 
-        zoomed_height = int(20 * self.zoom_level)
-        self.hex_viewer = HexViewer(hex_frame, width=70, height=zoomed_height, app=self)
-        self.hex_viewer.hex_text.bind("<Button-1>", self.on_hex_click)
-        self.hex_viewer.ascii_text.bind("<Button-1>", self.on_ascii_click)
+        self.hex_viewer = HexViewer(hex_frame._content_frame, width=70, height=20, app=self)
+        self.hex_viewer.hex_text.bind("<Button-1>", self.on_hex_click, add='+')
+        self.hex_viewer.ascii_text.bind("<Button-1>", self.on_ascii_click, add='+')
         self.hex_viewer.hex_text.bind("<Button-3>", self.hex_viewer.on_hex_right_click)
         self.hex_viewer.ascii_text.bind("<Button-3>", self.hex_viewer.on_ascii_right_click)
+        self.edit_dialog = tk.Toplevel(self.root)
+        self.edit_dialog.title("编辑修改")
+        self.edit_dialog.configure(bg=MODERN_COLORS['bg_secondary'])
+        self.edit_dialog.transient(self.root)
+        self.edit_dialog.geometry(f"{int(860 * self.scale_factor)}x{int(720 * self.scale_factor)}")
+        self.edit_dialog.minsize(int(620 * self.scale_factor), int(520 * self.scale_factor))
+        self.edit_dialog.protocol("WM_DELETE_WINDOW", self._withdraw_edit_dialog)
 
-        v_scrollbar = ttk.Scrollbar(hex_frame, orient=tk.VERTICAL, command=self.hex_viewer.yview)
-        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.hex_viewer.set_scroll_command(v_scrollbar.set)
+        dlg_frame = ModernLabelFrame(self.edit_dialog, text="🛠 编辑修改", bg=MODERN_COLORS['bg_secondary'])
+        dlg_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
 
-        search_frame = ModernLabelFrame(left_container, text="查找和替换", bg=MODERN_COLORS['bg_primary'])
-        search_frame.grid(row=2, column=0, sticky=tk.EW)
+        dlg_inner = dlg_frame._content_frame
+        for _r in range(6):
+            dlg_frame.grid_rowconfigure(_r, weight=0)
+        dlg_frame.grid_rowconfigure(5, weight=1)
+        dlg_frame.grid_columnconfigure(0, weight=1)
 
-        search_frame_inner = search_frame._content_frame
-        search_frame_inner.grid_rowconfigure(0, weight=0)
-        search_frame_inner.grid_rowconfigure(1, weight=0)
-        search_frame_inner.grid_rowconfigure(2, weight=0)
-        search_frame_inner.grid_rowconfigure(3, weight=0)
-        search_frame_inner.grid_rowconfigure(4, weight=0)
-        search_frame_inner.grid_columnconfigure(0, weight=1)
-
-        input_type_frame = tk.Frame(search_frame_inner, bg=MODERN_COLORS['bg_secondary'])
+        input_type_frame = tk.Frame(dlg_inner, bg=MODERN_COLORS['bg_secondary'])
         input_type_frame.grid(row=0, column=0, sticky=tk.EW, padx=10, pady=(5, 0))
 
         tk.Label(input_type_frame, text="输入类型:", bg=MODERN_COLORS['bg_secondary'],
@@ -1260,10 +1374,10 @@ class BinaryEditorApp:
         self.encoding_menu.pack(side=tk.LEFT, padx=2)
         self.encoding_menu.bind("<<ComboboxSelected>>", self.on_encoding_changed)
 
-        search_input_frame = tk.Frame(search_frame_inner, bg=MODERN_COLORS['bg_secondary'])
+        search_input_frame = tk.Frame(dlg_inner, bg=MODERN_COLORS['bg_secondary'])
         search_input_frame.grid(row=1, column=0, sticky=tk.EW, padx=10, pady=5)
 
-        tk.Label(search_input_frame, text="查找字符串:", bg=MODERN_COLORS['bg_secondary'],
+        tk.Label(search_input_frame, text="原始字符串:", bg=MODERN_COLORS['bg_secondary'],
                 fg=MODERN_COLORS['text_primary'], font=("Microsoft YaHei", 10)).pack(anchor=tk.W)
         self.find_text = ModernText(search_input_frame, height=2)
         self.find_text.pack(fill=tk.X, pady=2)
@@ -1272,7 +1386,7 @@ class BinaryEditorApp:
         self.find_text.bind("<Control-v>", self.handle_paste)
         self.add_tooltip(self.find_text, "双击此输入框自动从16进制模式切换至字符串模式")
 
-        tk.Label(search_input_frame, text="查找16进制字节序列:", bg=MODERN_COLORS['bg_secondary'],
+        tk.Label(search_input_frame, text="原始16进制字节序列:", bg=MODERN_COLORS['bg_secondary'],
                 fg=MODERN_COLORS['text_primary'], font=("Microsoft YaHei", 10)).pack(anchor=tk.W, pady=(5, 0))
         self.find_hex_entry = ModernEntry(search_input_frame)
         self.find_hex_entry.pack(fill=tk.X, pady=2)
@@ -1280,39 +1394,68 @@ class BinaryEditorApp:
         self.find_hex_entry.bind("<FocusIn>", self.on_hex_focus)
         self.add_tooltip(self.find_hex_entry, "双击此输入框自动从字符串模式切换至16进制模式")
 
-        replace_input_frame = tk.Frame(search_frame_inner, bg=MODERN_COLORS['bg_secondary'])
+        replace_input_frame = tk.Frame(dlg_inner, bg=MODERN_COLORS['bg_secondary'])
         replace_input_frame.grid(row=2, column=0, sticky=tk.EW, padx=10, pady=5)
 
-        tk.Label(replace_input_frame, text="替换字符串:", bg=MODERN_COLORS['bg_secondary'],
+        tk.Label(replace_input_frame, text="修改为:", bg=MODERN_COLORS['bg_secondary'],
                 fg=MODERN_COLORS['accent_green'], font=("Microsoft YaHei", 10)).pack(anchor=tk.W)
         self.replace_text = ModernText(replace_input_frame, height=2)
         self.replace_text.pack(fill=tk.X, pady=2)
         self.replace_text.bind("<KeyRelease>", self.validate_replace_input)
         self.replace_text.bind("<Control-v>", self.handle_paste)
 
-        tk.Label(replace_input_frame, text="替换16进制字节序列:", bg=MODERN_COLORS['bg_secondary'],
+        tk.Label(replace_input_frame, text="修改为(16进制字节序列):", bg=MODERN_COLORS['bg_secondary'],
                 fg=MODERN_COLORS['accent_green'], font=("Microsoft YaHei", 10)).pack(anchor=tk.W, pady=(5, 0))
         self.replace_hex_entry = ModernEntry(replace_input_frame)
         self.replace_hex_entry.pack(fill=tk.X, pady=2)
         self.replace_hex_entry.bind("<KeyRelease>", self.validate_replace_hex_input)
         self.replace_hex_entry.bind("<Control-v>", self.handle_paste)
 
-        button_frame = tk.Frame(search_frame_inner, bg=MODERN_COLORS['bg_tertiary'])
+        button_frame = tk.Frame(dlg_inner, bg=MODERN_COLORS['bg_tertiary'])
         button_frame.grid(row=3, column=0, sticky=tk.EW, padx=10, pady=(5, 5))
 
-        button_frame.grid_columnconfigure(0, weight=1)
-        button_frame.grid_columnconfigure(1, weight=1)
-        button_frame.grid_columnconfigure(2, weight=1)
-        button_frame.grid_columnconfigure(3, weight=1)
-        button_frame.grid_columnconfigure(4, weight=1)
+        for _c in range(5):
+            button_frame.grid_columnconfigure(_c, weight=1)
 
         ModernButton(button_frame, text="查找", command=self.confirm_new_find_text).grid(row=0, column=0, padx=4, pady=4)
         ModernButton(button_frame, text="上一个(F1)", command=self.find_prev).grid(row=0, column=1, padx=4, pady=4)
         ModernButton(button_frame, text="下一个(F2)", command=self.find_next).grid(row=0, column=2, padx=4, pady=4)
-        self.replace_button = ModernButton(button_frame, text="替换当前", command=self.replace_current)
+        self.replace_button = ModernButton(button_frame, text="修改当前", command=self.replace_current)
         self.replace_button.grid(row=0, column=3, padx=4, pady=4)
-        self.replace_all_button = ModernButton(button_frame, text="替换全部", command=self.replace_all)
+        self.replace_all_button = ModernButton(button_frame, text="全部修改", command=self.replace_all)
         self.replace_all_button.grid(row=0, column=4, padx=4, pady=4)
+
+        aux_frame = tk.Frame(dlg_inner, bg=MODERN_COLORS['bg_tertiary'])
+        aux_frame.grid(row=4, column=0, sticky=tk.EW, padx=10, pady=(0, 5))
+        aux_frame.grid_columnconfigure(0, weight=1)
+        aux_frame.grid_columnconfigure(1, weight=1)
+        ModernButton(aux_frame, text="📋 使用框选内容", command=self.use_hex_selection).grid(row=0, column=0, padx=4, pady=4, sticky=tk.W)
+        ModernButton(aux_frame, text="关闭窗口", command=self._withdraw_edit_dialog, width=10).grid(row=0, column=1, padx=4, pady=4, sticky=tk.E)
+
+        result_frame = tk.Frame(dlg_inner, bg=MODERN_COLORS['bg_secondary'])
+        result_frame.grid(row=5, column=0, sticky=tk.NSEW, padx=10, pady=(0, 5))
+        result_frame.grid_rowconfigure(1, weight=1)
+        result_frame.grid_columnconfigure(0, weight=1)
+
+        tk.Label(result_frame, text="匹配结果(点击行可跳转定位):", bg=MODERN_COLORS['bg_secondary'],
+                fg=MODERN_COLORS['accent_yellow'], font=("Microsoft YaHei", 10, "bold")).grid(row=0, column=0, sticky=tk.W, pady=(0, 3))
+
+        self.result_tree = ttk.Treeview(result_frame, columns=("idx", "addr", "len", "preview"), show="headings", height=10)
+        self.result_tree.heading("idx", text="#")
+        self.result_tree.column("idx", width=40, anchor=tk.CENTER)
+        self.result_tree.heading("addr", text="地址")
+        self.result_tree.column("addr", width=100, anchor=tk.CENTER)
+        self.result_tree.heading("len", text="长度")
+        self.result_tree.column("len", width=60, anchor=tk.CENTER)
+        self.result_tree.heading("preview", text="内容预览")
+        self.result_tree.column("preview", width=380, anchor=tk.W)
+        result_scroll = ttk.Scrollbar(result_frame, orient=tk.VERTICAL, command=self.result_tree.yview)
+        self.result_tree.configure(yscrollcommand=result_scroll.set)
+        self.result_tree.grid(row=1, column=0, sticky=tk.NSEW)
+        result_scroll.grid(row=1, column=1, sticky=tk.NS)
+        self.result_tree.bind("<<TreeviewSelect>>", self.on_result_selected)
+
+        self.edit_dialog.withdraw()
 
         self.sidebar_frame = ModernLabelFrame(main_container, text="字符串列表", bg=MODERN_COLORS['bg_primary'])
         self.sidebar_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=(0, 5), pady=5)
@@ -1369,7 +1512,8 @@ class BinaryEditorApp:
         self.string_tree.heading("内容", text="内容")
         self.string_tree.column("内容", width=200, anchor=tk.W)
         tree_scrollbar = ttk.Scrollbar(sidebar_inner, orient=tk.VERTICAL, command=self.string_tree.yview)
-        self.string_tree.configure(yscrollcommand=tree_scrollbar.set)
+        self.tree_scrollbar = tree_scrollbar
+        self.string_tree.configure(yscrollcommand=self._on_string_tree_scroll)
         self.string_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         tree_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.string_tree.bind("<<TreeviewSelect>>", self.on_string_selected)
@@ -1386,36 +1530,6 @@ class BinaryEditorApp:
 
         self.find_mode = "text"
         self.update_input_fields_state()
-
-    def zoom_in(self):
-        current_idx = self.zoom_factors.index(self.zoom_level)
-        if current_idx < len(self.zoom_factors) - 1:
-            new_zoom = self.zoom_factors[current_idx + 1]
-            self.set_zoom(new_zoom)
-
-    def zoom_out(self):
-        current_idx = self.zoom_factors.index(self.zoom_level)
-        if current_idx > 0:
-            new_zoom = self.zoom_factors[current_idx - 1]
-            self.set_zoom(new_zoom)
-
-    def on_zoom_changed(self, event=None):
-        zoom_str = self.zoom_var.get()
-        zoom_map = {"90%": 0.9, "100%": 1.0}
-        if zoom_str in zoom_map:
-            self.set_zoom(zoom_map[zoom_str])
-
-    def set_zoom(self, zoom_factor):
-        self.zoom_level = zoom_factor
-        self.zoom_var.set(f"{int(zoom_factor * 100)}%")    
-        new_font_size = int(self.base_font_size * zoom_factor)
-        font_name = "SimSun"  
-        new_font = f"{font_name} {new_font_size}"  
-        self.update_all_fonts(new_font)   
-        self.adjust_window_height()   
-        if hasattr(self, 'hex_viewer'):
-            self.update_hex_viewer_height()   
-        self.update_status(f"已缩放至{int(zoom_factor * 100)}%")
 
     def update_hex_viewer_height(self):
         if not hasattr(self, 'hex_viewer'):
@@ -1466,7 +1580,7 @@ class BinaryEditorApp:
         current_width = self.root.winfo_width()   
         base_height = 1000
         min_height = 600  
-        scaled_height = int(base_height * self.scale_factor * self.zoom_level)
+        scaled_height = int(base_height * self.scale_factor)
         scaled_height = max(int(min_height * self.scale_factor), scaled_height)   
         self.root.geometry(f"{current_width}x{scaled_height}")  
         self.root.minsize(
@@ -1480,6 +1594,17 @@ class BinaryEditorApp:
         else:
             self.hex_viewer._on_mousewheel(event)
         return "break"
+
+    def _on_string_tree_scroll(self, first, last):
+        first = float(first)
+        last = float(last)
+        self.tree_scrollbar.set(first, last)
+        if first <= 0.0 and last >= 1.0:
+            if self.tree_scrollbar.winfo_manager() == 'pack':
+                self.tree_scrollbar.pack_forget()
+        else:
+            if self.tree_scrollbar.winfo_manager() != 'pack':
+                self.tree_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     def on_string_selected(self, event):
         selected = self.string_tree.selection()
@@ -1525,6 +1650,7 @@ class BinaryEditorApp:
                 find_bytes = text.encode(current_encoding, errors='ignore')
                 self.current_matches = [{"pos": address, "bytes": find_bytes}]
                 self.current_match_index = 0
+                self._refresh_result_tree()
                 self.replace_button.config(state=tk.NORMAL)
                 self.replace_all_button.config(state=tk.NORMAL)
                 self.replace_buttons_disabled = False
@@ -1548,11 +1674,12 @@ class BinaryEditorApp:
                     self.update_status(f"原文:{original_text[:50]}... | 已有翻译:{translated_text[:50]}...")
                 else:
                     self.update_status(f"原文:{original_text[:50]}... | 尚未翻译")
+        self.show_edit_dialog()
         self.replace_text.focus_set()
         self.replace_text.tag_add(tk.SEL, "1.0", tk.END)
         self.replace_text.mark_set(tk.INSERT, "1.0")
         self.replace_text.see(tk.INSERT)
-        self.update_status("双击选中字符串,已聚焦到替换输入框,请输入汉化内容")
+        self.update_status("双击选中字符串,编辑修改窗口已打开,请输入汉化内容")
 
     def prev_string(self):
         if not self.string_entries:
@@ -1884,7 +2011,7 @@ class BinaryEditorApp:
                 current_pos = self.find_text.index(tk.INSERT)
                 self.find_text.insert(current_pos, cleaned_text)
                 self.validate_input()
-                self.update_status(f"已粘贴文本到查找框")
+                self.update_status(f"已粘贴文本到原始内容框")
 
             elif focused_widget == self.find_hex_entry:
                 self.input_type_var.set("十六进制")
@@ -1901,7 +2028,7 @@ class BinaryEditorApp:
                 current_pos = self.replace_text.index(tk.INSERT)
                 self.replace_text.insert(current_pos, processed_text)
                 self.validate_replace_input()
-                self.update_status(f"已粘贴替换文本并处理标点符号")
+                self.update_status(f"已粘贴修改文本并处理标点符号")
 
             elif focused_widget == self.replace_hex_entry:
                 cleaned_text = re.sub(r'[^0-9A-Fa-f]', '', clipboard_text).upper()
@@ -2003,7 +2130,7 @@ class BinaryEditorApp:
         clipboard_text = f"{display_char} [0x{current_byte:02X}]"
         self.root.clipboard_clear()
         self.root.clipboard_append(clipboard_text)
-        self.update_status(f"已复制字符:{clipboard_text}")
+        self.update_status(f"已复制字符串:{clipboard_text}")
 
     def on_find_focus(self, event):
         if event.widget == self.find_text:
@@ -2035,8 +2162,7 @@ class BinaryEditorApp:
         input_type_value = self.input_type_var.get() if hasattr(self, 'input_type_var') else "字符串"
         encoding_value = self.encoding_var.get() if hasattr(self, 'encoding_var') else "utf-8"
         scan_mode_value = self.scan_mode_var.get() if hasattr(self, 'scan_mode_var') else "ansi"
-        zoom_value = self.zoom_var.get() if hasattr(self, 'zoom_var') else "100%"
-        
+
         if theme == 'light':
             MODERN_COLORS = MODERN_COLORS_LIGHT
             CURRENT_THEME = 'light'
@@ -2063,9 +2189,7 @@ class BinaryEditorApp:
             self.encoding_var.set(encoding_value)
         if hasattr(self, 'scan_mode_var'):
             self.scan_mode_var.set(scan_mode_value)
-        if hasattr(self, 'zoom_var'):
-            self.zoom_var.set(zoom_value)
-        
+
         self.update_status(f"已切换到{('亮色' if theme == 'light' else '暗色')}主题")
 
     def update_all_widgets_color(self):
@@ -2266,7 +2390,7 @@ class BinaryEditorApp:
 
     def show_about(self):
         about_window = tk.Toplevel(self.root)
-        about_window.title("关于 汉化辅助编辑器")
+        about_window.title("关于汉化辅助编辑器")
         about_window.geometry("700x600")
         about_window.configure(bg=MODERN_COLORS['bg_primary'])
         about_window.resizable(True, True)
@@ -2283,14 +2407,14 @@ class BinaryEditorApp:
         version_frame = tk.Frame(about_window, bg=MODERN_COLORS['bg_secondary'])
         version_frame.pack(fill=tk.X, pady=10)
 
-        version_label = tk.Label(version_frame, text="版本 8.0  |  [B站偷吃布丁的涅普缇努制作,第四梦境协助修改]",
+        version_label = tk.Label(version_frame, text="版本 9.0  |  [超次元涅普缇努]",
                                 bg=MODERN_COLORS['bg_secondary'], fg=MODERN_COLORS['accent_green'],
                                 font=("Microsoft YaHei", 11, "bold"))
         version_label.pack(pady=8)
 
         info_text = """汉化辅助编辑器
 
-一个简单的二进制文件编辑器
+一个简单的二进制编辑器
 
 
 我已经把所有不可打印字符全部改成紫色高亮了
@@ -2391,7 +2515,7 @@ C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉�
         credit_frame = tk.Frame(about_window, bg=MODERN_COLORS['bg_tertiary'])
         credit_frame.pack(fill=tk.X, pady=0)
 
-        credit_label = tk.Label(credit_frame, text="B站: 偷吃布丁的涅普缇努 | 协助: 第四梦境",
+        credit_label = tk.Label(credit_frame, text="B站:超次元涅普缇努",
                                bg=MODERN_COLORS['bg_tertiary'], fg=MODERN_COLORS['text_secondary'],
                                font=("Microsoft YaHei", 9), pady=8)
         credit_label.pack()
@@ -2609,7 +2733,7 @@ C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉�
         if not self.file_data:
             return
         if len(self.file_data) > 100 * 1024 * 1024:
-            result = messagebox.askyesno("警告", "文件较大,搜索可能需要较长时间,是否继续？")
+            result = messagebox.askyesno("警告", "文件较大,搜索可能需要较长时间,是否继续?")
             if not result:
                 return
 
@@ -2621,7 +2745,7 @@ C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉�
         find_str = self.find_text.get("1.0", tk.END).strip() if self.find_mode == "text" else self.find_hex_entry.get().strip()
 
         if not find_str:
-            self.update_status("请输入查找内容")
+            self.update_status("请输入原始内容")
             return
 
         encoding = self.encoding_var.get()
@@ -2672,8 +2796,10 @@ C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉�
             match = self.current_matches[self.current_match_index]
             self.hex_viewer.highlight_range(match["pos"], match["pos"] + len(match["bytes"]) - 1)
             self.hex_viewer.scroll_to_address(match["pos"])
+            self._refresh_result_tree()
         else:
-            self.update_status("未找到匹配项") 
+            self._refresh_result_tree()
+            self.update_status("未找到匹配项")
 
     def find_next(self):
         if not self.current_matches:
@@ -2689,6 +2815,7 @@ C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉�
         self.hex_viewer.highlight_range(match["pos"], match["pos"] + len(match["bytes"]) - 1)
         self.hex_viewer.scroll_to_address(match["pos"])
         self.update_input_fields_state()
+        self._refresh_result_tree()
 
     def find_prev(self):
         if not self.current_matches:
@@ -2704,6 +2831,7 @@ C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉�
         self.hex_viewer.highlight_range(match["pos"], match["pos"] + len(match["bytes"]) - 1)
         self.hex_viewer.scroll_to_address(match["pos"])
         self.update_input_fields_state()
+        self._refresh_result_tree()
 
     def clear_matches(self):
         self.current_matches = []
@@ -2769,38 +2897,33 @@ C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉�
         original_length = len(find_bytes)
         replace_length = len(replace_bytes)
         encoding = self.encoding_var.get()
-        
-        if encoding in ['utf-16le', 'utf-16be'] and (original_length - replace_length) % 2 != 0:
-            padding_length = original_length - replace_length
-            if padding_length % 2 != 0:
-                padding_length += 1
-        
+
         if replace_length > original_length:
-            if encoding in ['utf-8', 'gbk', 'gb2312', 'big5']:
-                excess_bytes = replace_length - original_length
-                available_zero_bytes = self._count_trailing_zero_bytes(pos + original_length)
-                if available_zero_bytes >= excess_bytes + 1:
-                    for i in range(replace_length):
-                        self.file_data[pos + i] = replace_bytes[i]
-                    return True, bytes_to_hex(replace_bytes)
-                else:
-                    return False, f"需要{excess_bytes}字节扩展,但后面只有{available_zero_bytes}个连续00字节"
+            excess_bytes = replace_length - original_length
+            is_utf16 = encoding in ['utf-16le', 'utf-16be']
+            if is_utf16 and excess_bytes % 2 != 0:
+                excess_bytes += 1
+            available_zero_bytes = self._count_trailing_zero_bytes(pos + original_length)
+            needed = excess_bytes + (2 if is_utf16 else 1)
+            if available_zero_bytes >= needed:
+                for i in range(replace_length):
+                    self.file_data[pos + i] = replace_bytes[i]
+                return True, bytes_to_hex(replace_bytes)
             else:
-                excess_bytes = replace_length - original_length
-                return False, f"替换内容比查找内容多{excess_bytes}字节"
-        
+                return False, f"需要{excess_bytes}字节扩展,但后面只有{available_zero_bytes}个连续00字节"
+
         if replace_length < original_length:
             padding = self.get_padding_bytes(original_length - replace_length)
             replace_bytes = replace_bytes + padding
-        
+
         for i in range(len(replace_bytes)):
             self.file_data[pos + i] = replace_bytes[i]
-        
+
         return True, bytes_to_hex(replace_bytes)
     
     def _count_trailing_zero_bytes(self, start_pos):
         count = 0
-        max_count = 100
+        max_count = 65536
         while start_pos + count < len(self.file_data) and count < max_count:
             if self.file_data[start_pos + count] == 0x00:
                 count += 1
@@ -2814,7 +2937,7 @@ C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉�
             return
         replace_str = self.replace_text.get("1.0", tk.END).strip()
         if not replace_str:
-            self.update_status("请输入替换内容")
+            self.update_status("请输入修改内容")
             return
         match = self.current_matches[self.current_match_index]
         pos = match["pos"]
@@ -2825,20 +2948,21 @@ C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉�
             return
         success, result = self._replace_at_position(pos, original_bytes, replace_bytes)
         if not success:
-            messagebox.showerror("替换失败", f"无法替换位置0x{pos:08X}的内容:\n{result}")
-            self.update_status(f"替换失败:{result}")
+            messagebox.showerror("修改失败", f"无法修改位置0x{pos:08X}的内容:\n{result}")
+            self.update_status(f"修改失败:{result}")
             return
         match["bytes"] = bytes.fromhex(result.replace(" ", ""))
         self.hex_viewer.set_data(self.file_data)
         self.hex_viewer.highlight_range(pos, pos + len(match["bytes"]) - 1)
+        self._refresh_result_tree()
         self._clear_input_fields()
         self.update_translation_in_entries(pos, replace_str)
-        self.update_status(f"已替换位置0x{pos:08X}的内容")
+        self.update_status(f"已修改位置0x{pos:08X}的内容")
         self.save_history_state()
         self.pending_changes = True
-        self.update_status(f"已替换,请记得保存文件以同步映射")
+        self.update_status(f"已修改,请记得保存文件以同步映射")
 
-    def update_translation_in_entries(self, address, translated_text):
+    def update_translation_in_entries(self, address, translated_text, save_mapping=True):
         for entry in self.string_entries:
             if entry['address'] == address:
                 entry['translated_text'] = translated_text
@@ -2858,7 +2982,8 @@ C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉�
                         ))
                         break
                 break        
-        self.save_current_mapping()
+        if save_mapping:
+            self.save_current_mapping()
 
     def save_current_mapping(self):
         if not self.file_path or not self.current_scan_mode:
@@ -2907,14 +3032,14 @@ C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉�
 
     def replace_all(self):
         if not self.current_matches:
-            self.update_status("没有匹配项可替换")
+            self.update_status("没有匹配项可修改")
             return
 
         find_str = self.find_text.get("1.0", tk.END).strip() if self.find_mode == "text" else self.find_hex_entry.get().strip()
         replace_str = self.replace_text.get("1.0", tk.END).strip()
 
         if not find_str or not replace_str:
-            self.update_status("请输入查找内容和替换内容")
+            self.update_status("请输入原始内容和修改内容")
             return
 
         find_bytes = self.input_to_bytes(find_str)
@@ -2924,29 +3049,35 @@ C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉�
             return
 
         failed_positions = []
-        replaced_positions = [] 
+        success_positions = []
         for match in sorted(self.current_matches, key=lambda x: x["pos"], reverse=True):
             pos = match["pos"]
             original_bytes = find_bytes
             success, result = self._replace_at_position(pos, original_bytes, replace_bytes)
             if success:
                 match["bytes"] = bytes.fromhex(result.replace(" ", ""))
+                success_positions.append(pos)
             else:
                 failed_positions.append(f"0x{pos:08X}: {result}")
-        for pos, translated_text in replaced_positions:
-            self.update_translation_in_entries(pos, translated_text)
+
+        success_count = len(success_positions)
+
+        for pos in success_positions:
+            self.update_translation_in_entries(pos, replace_str, save_mapping=False)
+
         if failed_positions:
             failed_text = "\n".join(failed_positions)
-            messagebox.showwarning("部分替换失败", f"以下位置无法替换:\n{failed_text}")
-        self._clear_input_fields()
-        self.find_matches()
+            messagebox.showwarning("部分修改失败", f"以下位置无法修改:\n{failed_text}")
+
         self.hex_viewer.set_data(self.file_data)
-        success_count = len(self.current_matches) - len(failed_positions)
-        self.update_status(f"已替换{success_count}个匹配项")
+        self.find_matches()
+        self._clear_input_fields()
+        self.update_status(f"已修改{success_count}个匹配项")
         self.save_history_state()
         if success_count > 0:
+            self.save_current_mapping()
             self.pending_changes = True
-            self.update_status(f"已替换{success_count}个字符串,请记得保存文件以同步映射")
+            self.update_status(f"已修改{success_count}个字符串,请记得保存文件以同步映射")
 
     def _clear_input_fields(self):
         self.find_text.config(state=tk.NORMAL)
@@ -2954,6 +3085,7 @@ C++程序可以使用我这个汉化辅助编辑器自己手动修改尝试汉�
         self.find_hex_entry.delete(0, tk.END)
         self.replace_text.delete("1.0", tk.END)
         self.replace_hex_entry.delete(0, tk.END)
+        self.current_find_text = ""
         self.find_mode = "text"
         self.input_type_var.set("字符串")
         self.update_input_fields_state()
@@ -3004,6 +3136,7 @@ class HexViewer:
         self.data = bytearray()
         self.base_font = ("Consolas", 9)
         self.current_font = self.base_font
+        self._metrics = None         
         self.create_widgets()
 
         self.start_address = 0
@@ -3022,6 +3155,16 @@ class HexViewer:
         self.create_context_menu()
         self.right_click_pos = None
         self.right_click_byte = None
+        self.sel_start = -1
+        self.sel_end = -1
+        self._sel_anchor = -1
+        self._sel_dragging = False
+        for _sel_widget in (self.hex_text, self.ascii_text):
+            _sel_widget.bind("<ButtonPress-1>", self._on_sel_press)
+            _sel_widget.bind("<B1-Motion>", self._on_sel_drag)
+            _sel_widget.bind("<ButtonRelease-1>", self._on_sel_release)
+            _sel_widget.bind("<Double-Button-1>", self._on_sel_double)
+            _sel_widget.bind("<Shift-ButtonPress-1>", self._on_sel_shift_press)
         self.window_width_config = {
             8: 800,
             16: 1000,
@@ -3030,15 +3173,26 @@ class HexViewer:
         }
         self.initial_window_size = None
 
+    def _char_metrics(self):
+        if self._metrics is None:
+            font = tkfont.Font(font=self.hex_text.cget("font"))
+            self._metrics = (font.measure("0"), font.metrics("linespace"))
+        return self._metrics
+
+    def _rendered_line_count(self):
+        try:
+            return int(self.hex_text.index("end-1c").split('.')[0])
+        except Exception:
+            return 0
+
     def get_available_lines(self):
         if not self.master.winfo_exists():
-            return self.initial_height  
+            return getattr(self, 'initial_height', self.height)
         self.master.update_idletasks()
         frame_height = self.master.winfo_height()  
         if frame_height <= 0:
-            return self.initial_height   
-        font = tkfont.Font(font=self.hex_text.cget("font"))
-        line_height = font.metrics("linespace")   
+            return getattr(self, 'initial_height', self.height)
+        _, line_height = self._char_metrics()
         if line_height <= 0:
             line_height = 20   
         available_lines = max(10, (frame_height // line_height) - 2)
@@ -3052,6 +3206,7 @@ class HexViewer:
 
     def set_font(self, font):
         self.current_font = font
+        self._metrics = None
         self.address_text.config(font=font)
         self.hex_text.config(font=font)
         self.ascii_text.config(font=font)
@@ -3112,10 +3267,6 @@ class HexViewer:
                                         command=self._on_scroll)
         self.vscrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.hex_text.config(yscrollcommand=self._on_scrollbar)
-        self.address_text.config(yscrollcommand=self.vscrollbar.set)
-        self.ascii_text.config(yscrollcommand=self.vscrollbar.set)
-
         self.hex_text.tag_configure("highlight", background=MODERN_COLORS['highlight'], foreground='#ffffff')
         self.ascii_text.tag_configure("highlight", background=MODERN_COLORS['highlight'], foreground='#ffffff')
         self.hex_text.tag_configure("non_printable", foreground=MODERN_COLORS['accent_purple'])
@@ -3163,15 +3314,10 @@ class HexViewer:
         self.hex_text.config(width=hex_width)   
         self.app.update_status(f"已切换到每行{bytes_per_line}字节模式,十六进制视图宽度已调整")
 
-    def _on_scrollbar(self, *args):
-        self.vscrollbar.set(*args)
-
     def set_encoding(self, encoding):
         self.current_encoding = encoding
         self.update_view()
     def update_view(self):
-        if not self.data:
-            return
         self.address_text.config(state=tk.NORMAL)
         self.hex_text.config(state=tk.NORMAL)
         self.ascii_text.config(state=tk.NORMAL)
@@ -3179,6 +3325,13 @@ class HexViewer:
         self.address_text.delete(1.0, tk.END)
         self.hex_text.delete(1.0, tk.END)
         self.ascii_text.delete(1.0, tk.END)
+
+        if not self.data:
+            self.hex_text.insert(tk.END, "(请打开文件,或将文件拖拽到窗口)")
+            self.address_text.config(state=tk.DISABLED)
+            self.hex_text.config(state=tk.DISABLED)
+            self.ascii_text.config(state=tk.DISABLED)
+            return
 
         actual_height = self.get_available_lines()
         if actual_height > 0:
@@ -3271,7 +3424,7 @@ class HexViewer:
         if len(args) == 2:
             action, value = args
             total_lines = (len(self.data) + self.bytes_per_line - 1) // self.bytes_per_line
-            visible_lines = self.height
+            visible_lines = getattr(self, 'current_height', self.height)
             if action == "moveto":
                 fraction = float(value)
                 new_line = int(fraction * max(0, total_lines - visible_lines))
@@ -3298,6 +3451,7 @@ class HexViewer:
                                    activeforeground='#ffffff',
                                    font=("Microsoft YaHei", 10))
         self.context_menu.add_command(label="✏️ 修改为空格 (0x20)", command=self.convert_to_space)
+        self.context_menu.add_command(label="📋 添加到修改窗口", command=self.send_selection_to_find)
         self.context_menu.add_command(label="➕ 插入字节", command=self.insert_bytes)
         self.context_menu.add_command(label="➖ 删除字节", command=self.delete_bytes)
         self.context_menu.add_command(label="📤 导出指定范围字节", command=self.export_range_bytes)
@@ -3322,7 +3476,7 @@ class HexViewer:
         if 0 <= byte_pos < len(self.data):
             self.right_click_pos = byte_pos
             self.right_click_byte = self.data[byte_pos]
-            self.highlight_range(byte_pos, byte_pos)
+            self._resolve_right_click_selection(byte_pos)
             self.context_menu.post(event.x_root, event.y_root)
 
     def on_ascii_right_click(self, event):
@@ -3344,8 +3498,9 @@ class HexViewer:
         if 0 <= byte_pos < len(self.data):
             self.right_click_pos = byte_pos
             self.right_click_byte = self.data[byte_pos]
-            self.highlight_range(byte_pos, byte_pos)
+            self._resolve_right_click_selection(byte_pos)
             self.context_menu.post(event.x_root, event.y_root)
+
     def insert_bytes(self):
         if self.app:
             self.app.insert_bytes()
@@ -3374,6 +3529,135 @@ class HexViewer:
                 self.master.master.update_status(message)
             else:
                 print(message)
+    def _xy_to_offset(self, event, ascii_view=False):
+        char_width, line_height = self._char_metrics()
+        if line_height <= 0:
+            line_height = 20
+        line = int(event.y // line_height)
+        col = int(event.x // char_width)
+        if ascii_view:
+            pos = self.start_address + line * self.bytes_per_line + col
+        else:
+            pos = self.start_address + line * self.bytes_per_line + col // 3
+        if pos < 0:
+            pos = 0
+        if pos > len(self.data) - 1:
+            pos = len(self.data) - 1
+        return pos
+
+    def _on_sel_press(self, event):
+        if not self.data:
+            return
+        if event.state & 0x0001:
+            return
+        ascii_view = event.widget is self.ascii_text
+        self._sel_anchor = self._xy_to_offset(event, ascii_view)
+        self._sel_dragging = True
+        self.sel_start = self._sel_anchor
+        self.sel_end = self._sel_anchor
+        self.highlight_range(self.sel_start, self.sel_end)
+
+    def _on_sel_drag(self, event):
+        if not self._sel_dragging or not self.data:
+            return
+        ascii_view = event.widget is self.ascii_text
+        pos = self._xy_to_offset(event, ascii_view)
+        self.sel_start = min(self._sel_anchor, pos)
+        self.sel_end = max(self._sel_anchor, pos)
+        self.highlight_range(self.sel_start, self.sel_end)
+        if self.app:
+            self.app.update_status(f"选区 0x{self.sel_start:08X}-0x{self.sel_end:08X} ({self.sel_end - self.sel_start + 1} 字节)")
+        return "break"
+
+    def _on_sel_release(self, event):
+        self._sel_dragging = False
+        if self.sel_start >= 0 and self.sel_end >= 0 and self.app:
+            self.app.update_status(f"已框选 0x{self.sel_start:08X}-0x{self.sel_end:08X} ({self.sel_end - self.sel_start + 1} 字节),右键\"添加到修改窗口\"可直接填入原始内容框")
+
+    def _word_extent(self, pos, ascii_view):
+        if not ascii_view:
+            return pos, pos
+        if self.current_encoding in ('utf-16le', 'utf-16be'):
+            if pos % 2:
+                pos -= 1
+            step = 2
+            def ok(p):
+                if p < 0 or p + step > len(self.data):
+                    return False
+                try:
+                    ch = bytes(self.data[p:p + step]).decode(self.current_encoding)
+                except Exception:
+                    return False
+                return len(ch) == 1 and ch.isprintable() and not ch.isspace()
+        else:
+            step = 1
+            def ok(p):
+                return 0 <= p < len(self.data) and self.data[p] >= 0x21
+        start = pos
+        while ok(start - step):
+            start -= step
+        end = pos
+        while ok(end + step):
+            end += step
+        return start, min(end + step - 1, len(self.data) - 1)
+
+    def _clear_native_selections(self):
+        for w in (self.hex_text, self.ascii_text):
+            try:
+                w.selection_clear()
+            except tk.TclError:
+                pass
+
+    def _on_sel_double(self, event):
+        if not self.data:
+            return
+        ascii_view = event.widget is self.ascii_text
+        pos = self._xy_to_offset(event, ascii_view)
+        start, end = self._word_extent(pos, ascii_view)
+        self._sel_anchor = start
+        self.sel_start, self.sel_end = start, end
+        self.highlight_range(start, end)
+        self._clear_native_selections()
+        if self.app:
+            self.app.update_status(
+                f"已选中0x{start:08X}-0x{end:08X} ({end - start + 1} 字节),右键\"添加到修改窗口\"可直接填入原始内容框")
+        return "break"
+
+    def _on_sel_shift_press(self, event):
+        if not self.data:
+            return
+        ascii_view = event.widget is self.ascii_text
+        pos = self._xy_to_offset(event, ascii_view)
+        anchor = self._sel_anchor if self._sel_anchor >= 0 else self.sel_start
+        if anchor < 0:
+            anchor = pos
+        self.sel_start = min(anchor, pos)
+        self.sel_end = max(anchor, pos)
+        self.highlight_range(self.sel_start, self.sel_end)
+        self._clear_native_selections()
+        if self.app:
+            self.app.update_status(f"选区 0x{self.sel_start:08X}-0x{self.sel_end:08X} ({self.sel_end - self.sel_start + 1} 字节)")
+        return "break"
+
+    def _resolve_right_click_selection(self, byte_pos):
+        if (self.sel_start >= 0 and self.sel_end >= 0
+                and self.sel_start <= byte_pos <= self.sel_end):
+            chosen = (self.sel_start, self.sel_end)
+        else:
+            chosen = (byte_pos, byte_pos)
+        self.sel_start, self.sel_end = chosen
+        self.highlight_range(chosen[0], chosen[1])
+        self._clear_native_selections()
+        return chosen
+
+    def send_selection_to_find(self):
+        if self.sel_start < 0 or self.sel_end < 0:
+            if self.app:
+                self.app.update_status("请先按住左键框选一段字节,或双击选中一个单词")
+            return
+        if self.app and hasattr(self.app, 'show_edit_dialog'):
+            self.app.show_edit_dialog(self.sel_start, self.sel_end)
+
     def _on_mousewheel(self, event):
         if not hasattr(self, 'data') or not self.data:
             return
@@ -3387,20 +3671,47 @@ class HexViewer:
         total_lines = (len(self.data) + self.bytes_per_line - 1) // self.bytes_per_line
         if total_lines > 0:
             first_line = self.start_address // self.bytes_per_line
-            visible_lines = self.height
+            visible_lines = getattr(self, 'current_height', self.height)
             self.vscrollbar.set(first_line / total_lines, (first_line + visible_lines) / total_lines)
         return "break"
 
     def scroll_to_address(self, address):
         line_num = address // self.bytes_per_line
+        rendered = self._rendered_line_count()
+        first_line = self.start_address // self.bytes_per_line
+        if rendered > 0 and first_line <= line_num <= first_line + rendered - 1:
+            return True
         visible_lines = self.height
-
         new_start_line = max(0, line_num - visible_lines // 2)
+        if new_start_line == first_line:
+            return True
         self.start_address = new_start_line * self.bytes_per_line
-
         self.update_view()
+        return False
 
-    def highlight_range(self, start, end):
+    def _apply_highlight_tags(self):
+        self.hex_text.tag_remove("highlight", "1.0", tk.END)
+        self.ascii_text.tag_remove("highlight", "1.0", tk.END)
+        if self.highlight_start < 0 or self.highlight_end < 0 or not self.data:
+            return
+        rendered = self._rendered_line_count()
+        if rendered <= 0:
+            return
+        first_addr = self.start_address
+        last_addr = min(self.start_address + rendered * self.bytes_per_line - 1,
+                        len(self.data) - 1)
+        s = max(self.highlight_start, first_addr)
+        e = min(self.highlight_end, last_addr)
+        if e < s:
+            return
+        base_line = self.start_address // self.bytes_per_line
+        for addr in range(s, e + 1):
+            row = addr // self.bytes_per_line - base_line + 1
+            col = addr % self.bytes_per_line
+            self.hex_text.tag_add("highlight", f"{row}.{col*3}", f"{row}.{col*3+2}")
+            self.ascii_text.tag_add("highlight", f"{row}.{col}", f"{row}.{col}+1c")
+
+    def highlight_range(self, start, end, rebuild=False):
         if end < start:
             end = start
         if self.current_encoding in ['utf-16le', 'utf-16be']:
@@ -3410,7 +3721,10 @@ class HexViewer:
                 end = min(len(self.data) - 1, end + 1)
         self.highlight_start = start
         self.highlight_end = end
-        self.update_view()
+        if rebuild:
+            self.update_view()
+        else:
+            self._apply_highlight_tags()
 
 def bytes_to_hex(byte_data):
     return ' '.join([f"{b:02X}" for b in byte_data])
@@ -3444,7 +3758,7 @@ def save_config(config):
         with open(config_file, 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"保存配置失败: {e}")
+        print(f"保存配置失败:{e}")
 
 if __name__ == "__main__":
     config = load_config()

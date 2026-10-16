@@ -70,6 +70,10 @@ class HexEditor(PyHexEdit):
 
         menu.addSeparator()
 
+        add_find_action = menu.addAction("📋 添加到修改窗口")
+        add_find_action.setToolTip("把框选的字节直接填入编辑修改窗口并精确定位,免去复制再搜索,重复内容也不怕认错")
+        add_find_action.triggered.connect(lambda: self.window().send_selection_to_find())
+
         modify_space_action = menu.addAction("✏️ 修改为空格(0x20)")
         modify_space_action.setToolTip("选择你要修改的不可打印字符对应的字节(如回车、换行、制表),将其改成0x20(空格)")
         modify_space_action.triggered.connect(lambda: self.window().convert_selection_to_space())
@@ -88,8 +92,8 @@ class HexEditor(PyHexEdit):
 
         menu.addSeparator()
 
-        find_action = menu.addAction("查找替换(Ctrl+F)")
-        find_action.setToolTip("查找要汉化的文本或十六进制,替换原始内容为你的汉化内容")
+        find_action = menu.addAction("编辑修改(Ctrl+F)")
+        find_action.setToolTip("框选或输入要汉化的原始内容,直接改为你的汉化内容")
         find_action.triggered.connect(lambda: self.window().show_find_dialog())
 
         menu.exec(QCursor.pos())
@@ -209,7 +213,8 @@ class HexEditor(PyHexEdit):
 
     def setTheme(self, theme):
         self._is_dark_theme = (theme == "dark")
-        self.setDarkTheme(self._is_dark_theme)
+        if hasattr(self, 'setDarkTheme'):
+            self.setDarkTheme(self._is_dark_theme)
         if self._is_dark_theme:
             self.setStyleSheet("""
                 QAbstractScrollArea {
@@ -701,7 +706,7 @@ class BinaryEditorQt(QMainWindow):
         translate_layout.addWidget(self.translated_text_edit)
 
         button_layout = QHBoxLayout()
-        self.apply_button = QPushButton("替换")
+        self.apply_button = QPushButton("修改")
         self.apply_button.clicked.connect(self.apply_translation)
         button_layout.addWidget(self.apply_button)
 
@@ -1065,15 +1070,25 @@ class BinaryEditorQt(QMainWindow):
         clipboard.setText(hex_str)
         self.update_status(f"已复制{end - begin}字节为十六进制")
 
-    def convert_utf16_exe_text(self, text):
-        if re.search(r'[0-9A-Fa-f]{2}\.[0-9A-Fa-f]{2}', text):
-            cleaned = re.sub(r'[\n\r\t]', '', text)
-            cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-            cleaned = re.sub(r'\.\.', '\n', cleaned)
-            cleaned = re.sub(r'\.', '', cleaned)
-            cleaned = re.sub('\n', '.', cleaned)
-            return cleaned
-        return text
+    @staticmethod
+    def _looks_like_dot_separated(text):
+        s = text.strip()
+        if s.count('.') < 2:
+            return False
+        core = s.strip('.')
+        if len(core) < 3:
+            return False
+        return all(c == '.' for c in core[1::2]) or all(c == '.' for c in core[0::2])
+
+    def convert_utf16_exe_text(self, text, force=False):
+        if not force and not self._looks_like_dot_separated(text):
+            return text
+        cleaned = re.sub(r'[\n\r\t]', '', text)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        cleaned = re.sub(r'\.\.', '\n', cleaned)
+        cleaned = re.sub(r'\.', '', cleaned)
+        cleaned = re.sub('\n', '.', cleaned)
+        return cleaned
 
     def copy_as_utf16_to_ascii(self):
         begin, end = self.hex_editor.getSelection()
@@ -1086,11 +1101,11 @@ class BinaryEditorQt(QMainWindow):
             return
         for i in range(0, length, 2):
             if i + 1 < length and selected_data[i] == 0x00 and selected_data[i+1] == 0x00:
-                QMessageBox.warning(self, "非法复制", "您正在进行非法操作,无法粘贴,请重试\n选中内容包含无效的UTF-16序列")
+                QMessageBox.warning(self, "非法复制", "您正在进行非法操作,无法粘贴,请重试\n选中内容包含无效的UTF-16字节序列")
                 return
         
         ascii_str = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in selected_data)
-        converted = self.convert_utf16_exe_text(ascii_str)
+        converted = self.convert_utf16_exe_text(ascii_str, force=True)
         clipboard = QApplication.clipboard()
         clipboard.setText(converted)
         self.update_status(f"已复制 {end - begin} 字节并转换为UTF16文本")
@@ -1207,7 +1222,7 @@ class BinaryEditorQt(QMainWindow):
 
     def _count_trailing_zero_bytes(self, start_pos):
         count = 0
-        max_count = 100
+        max_count = 65536
         while start_pos + count < len(self.file_data) and count < max_count:
             if self.file_data[start_pos + count] == 0x00:
                 count += 1
@@ -1237,19 +1252,19 @@ class BinaryEditorQt(QMainWindow):
                 padding_length += 1
         
         if replace_length > original_length:
-            if encoding.lower() in ['utf-8', 'gbk', 'gb2312', 'big5']:
-                excess_bytes = replace_length - original_length
-                available_zero_bytes = self._count_trailing_zero_bytes(pos + original_length)
-                if available_zero_bytes >= excess_bytes + 1:
-                    self.save_history_state()
-                    for i in range(replace_length):
-                        self.file_data[pos + i] = replace_bytes[i]
-                    return True, ""
-                else:
-                    return False, f"需要{excess_bytes}字节扩展,但后面只有{available_zero_bytes}个连续00字节"
+            excess_bytes = replace_length - original_length
+            is_utf16 = encoding.lower() in ['utf-16le', 'utf-16be']
+            if is_utf16 and excess_bytes % 2 != 0:
+                excess_bytes += 1
+            available_zero_bytes = self._count_trailing_zero_bytes(pos + original_length)
+            needed = excess_bytes + (2 if is_utf16 else 1)
+            if available_zero_bytes >= needed:
+                self.save_history_state()
+                for i in range(replace_length):
+                    self.file_data[pos + i] = replace_bytes[i]
+                return True, ""
             else:
-                excess_bytes = replace_length - original_length
-                return False, f"替换内容比查找内容多{excess_bytes}字节"
+                return False, f"需要{excess_bytes}字节扩展,但后面只有{available_zero_bytes}个连续00字节"
         
         if replace_length < original_length:
             padding = self.get_padding_bytes(original_length - replace_length, encoding)
@@ -1330,7 +1345,7 @@ class BinaryEditorQt(QMainWindow):
                 try:
                     text = segment_bytes.decode('ascii')
                     if is_basic_english(text):
-                        if len(text) > 200:
+                        if len(text) > 1000:
                             continue
                         hex_chars = sum(1 for c in text if c in '0123456789ABCDEFabcdef')
                         if hex_chars / len(text) > 0.7:
@@ -1547,10 +1562,14 @@ class BinaryEditorQt(QMainWindow):
                 if len(new_bytes) <= entry.length:
                     self.file_data[entry.address:entry.address + len(new_bytes)] = new_bytes
                 else:
-                    self.file_data = bytearray(self.file_data[:entry.address]) + \
-                                    bytearray(new_bytes) + \
-                                    bytearray(self.file_data[entry.address + entry.length:])
-                    entry.length = len(new_bytes)
+                    entry.text = entry.original_text
+                    entry.translated_text = ""
+                    item = self.string_tree.topLevelItem(self.current_string_index)
+                    if item:
+                        dt = entry.original_text
+                        item.setText(3, dt[:27] + "..." if len(dt) > 30 else dt)
+                    self.update_status(f"新内容比原内容多{len(new_bytes) - entry.length}字节,已拒绝")
+                    return
 
                 self.hex_editor.setData(self.file_data)
                 self.pending_changes = True
@@ -1572,22 +1591,45 @@ class BinaryEditorQt(QMainWindow):
             new_index = (self.current_string_index + 1) % len(self.string_entries)
             self.string_tree.setCurrentItem(self.string_tree.topLevelItem(new_index))
 
-    def show_find_dialog(self):
+    def send_selection_to_find(self):
+        begin, end = self.hex_editor.getSelection()
+        if begin is None or end is None:
+            QMessageBox.warning(self, "提示", "请先在十六进制视图按住左键框选一段内容")
+            return
+        if not self.file_data:
+            QMessageBox.warning(self, "提示", "请先打开文件")
+            return
+        raw = bytes(self.file_data[begin:end])
+        encoding = self.config.get("find_encoding", "utf-8")
+        prefill = None
+        prefill_type = "十六进制"
+        try:
+            text = raw.decode(encoding)
+            if not any(c in text for c in '\x00\t\n\r'):
+                prefill = text
+                prefill_type = "文本"
+        except Exception:
+            pass
+        if prefill is None:
+            prefill = ' '.join(f'{b:02X}' for b in raw)
+        self.show_find_dialog(prefill_text=prefill, prefill_type=prefill_type, prefill_pos=begin)
+
+    def show_find_dialog(self, prefill_text=None, prefill_type=None, prefill_pos=None):
         dialog = QDialog(self)
-        dialog.setWindowTitle("查找替换")
-        dialog.setModal(False)  
+        dialog.setWindowTitle("编辑修改")
+        dialog.setModal(False)
         dialog.resize(600, 500)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
-        layout.addWidget(QLabel("查找内容:"))
+        layout.addWidget(QLabel("原始内容:"))
         find_input = UTF16TextEdit(self.convert_utf16_exe_text)
         find_input.setMinimumHeight(100)
         layout.addWidget(find_input)
 
-        layout.addWidget(QLabel("替换为:"))
+        layout.addWidget(QLabel("修改为:"))
         replace_input = UTF16TextEdit(self.convert_utf16_exe_text)
         replace_input.setMinimumHeight(100)
         layout.addWidget(replace_input)
@@ -1598,6 +1640,11 @@ class BinaryEditorQt(QMainWindow):
         type_combo.addItems(["文本", "十六进制"])
         type_combo.setFixedWidth(100)
         type_layout.addWidget(type_combo)
+
+        if prefill_text is not None:
+            find_input.setPlainText(prefill_text)
+        if prefill_type is not None:
+            type_combo.setCurrentText(prefill_type)
         
         type_layout.addWidget(QLabel("编码:"))
         encoding_combo = QComboBox()
@@ -1626,9 +1673,9 @@ class BinaryEditorQt(QMainWindow):
         button_layout = QHBoxLayout()
         find_btn = QPushButton("查找")
         find_btn.setFixedWidth(100)
-        replace_btn = QPushButton("替换当前")
+        replace_btn = QPushButton("修改当前")
         replace_btn.setFixedWidth(120)
-        replace_all_btn = QPushButton("全部替换")
+        replace_all_btn = QPushButton("全部修改")
         replace_all_btn.setFixedWidth(120)
         cancel_btn = QPushButton("关闭")
         cancel_btn.setFixedWidth(100)
@@ -1678,7 +1725,7 @@ class BinaryEditorQt(QMainWindow):
             encoding = encoding_combo.currentText()
             
             if not search_text:
-                QMessageBox.warning(dialog, "提示", "请输入查找内容")
+                QMessageBox.warning(dialog, "提示", "请输入原始内容")
                 return
 
             search_results = []
@@ -1748,10 +1795,17 @@ class BinaryEditorQt(QMainWindow):
             else:
                 try:
                     search_bytes = bytes.fromhex(search_text.replace(' ', ''))
-                    replace_bytes = bytes.fromhex(replace_text.replace(' ', ''))
                 except:
                     QMessageBox.warning(dialog, "错误", "无效的十六进制格式")
                     return
+                try:
+                    replace_bytes = bytes.fromhex(replace_text.replace(' ', ''))
+                except:
+                    try:
+                        replace_bytes = replace_text.encode(encoding)
+                    except:
+                        QMessageBox.warning(dialog, "错误", "修改内容既不是有效的十六进制,也无法按当前编码转换")
+                        return
 
             if len(search_results) == 1:
                 pos = search_results[0]
@@ -1760,9 +1814,9 @@ class BinaryEditorQt(QMainWindow):
                     self.hex_editor.setData(self.file_data)
                     search_results = []
                     result_list.clear()
-                    self.update_status("已替换 1 项")
+                    self.update_status("已修改 1 项")
                 else:
-                    QMessageBox.warning(dialog, "替换失败", msg)
+                    QMessageBox.warning(dialog, "修改失败", msg)
             else:
                 selected_items = result_list.selectedItems()
                 if selected_items:
@@ -1777,11 +1831,11 @@ class BinaryEditorQt(QMainWindow):
                         if search_results:
                             new_idx = min(idx, len(search_results)-1)
                             result_list.setCurrentItem(result_list.topLevelItem(new_idx))
-                        self.update_status("已替换当前项")
+                        self.update_status("已修改当前项")
                     else:
-                        QMessageBox.warning(dialog, "替换失败", msg)
+                        QMessageBox.warning(dialog, "修改失败", msg)
                 else:
-                    QMessageBox.warning(dialog, "提示", "请先选中要替换的结果")
+                    QMessageBox.warning(dialog, "提示", "请先选中要修改的结果")
 
         def do_replace_all():
             nonlocal search_results
@@ -1820,21 +1874,20 @@ class BinaryEditorQt(QMainWindow):
                 new_replace_length = len(replace_bytes)
                 
                 if new_replace_length > original_length:
-                    if encoding.lower() in ['utf-8', 'gbk', 'gb2312', 'big5']:
-                        excess_bytes = new_replace_length - original_length
-                        available_zero_bytes = 0
-                        temp_pos = pos + original_length
-                        while temp_pos < len(data) and data[temp_pos] == 0x00:
-                            available_zero_bytes += 1
-                            temp_pos += 1
-                        if available_zero_bytes >= excess_bytes + 1:
-                            data[pos:pos+new_replace_length] = replace_bytes
-                        else:
-                            errors.append(f"位置0x{pos:08X}:需要{excess_bytes}字节扩展,但后面只有{available_zero_bytes}个连续00字节")
-                            pos += original_length
-                            continue
+                    excess_bytes = new_replace_length - original_length
+                    is_utf16 = encoding.lower() in ['utf-16le', 'utf-16be']
+                    if is_utf16 and excess_bytes % 2 != 0:
+                        excess_bytes += 1
+                    available_zero_bytes = 0
+                    temp_pos = pos + original_length
+                    while temp_pos < len(data) and data[temp_pos] == 0x00:
+                        available_zero_bytes += 1
+                        temp_pos += 1
+                    needed = excess_bytes + (2 if is_utf16 else 1)
+                    if available_zero_bytes >= needed:
+                        data[pos:pos+new_replace_length] = replace_bytes
                     else:
-                        errors.append(f"位置0x{pos:08X}:替换内容比查找内容多{new_replace_length - original_length}字节")
+                        errors.append(f"位置0x{pos:08X}:需要{excess_bytes}字节扩展,但后面只有{available_zero_bytes}个连续00字节")
                         pos += original_length
                         continue
                 elif new_replace_length < original_length:
@@ -1851,7 +1904,7 @@ class BinaryEditorQt(QMainWindow):
                 self.hex_editor.setData(self.file_data)
                 search_results = []
                 result_list.clear()
-                self.update_status(f"已替换{count}项")
+                self.update_status(f"已修改{count}项")
             else:
                 QMessageBox.information(dialog, "结果", "未找到匹配项")
 
@@ -1859,6 +1912,17 @@ class BinaryEditorQt(QMainWindow):
         replace_btn.clicked.connect(do_replace)
         replace_all_btn.clicked.connect(do_replace_all)
         cancel_btn.clicked.connect(dialog.close)
+
+        if prefill_text is not None:
+            do_find()
+            if prefill_pos is not None:
+                for i in range(result_list.topLevelItemCount()):
+                    if i < len(search_results) and search_results[i] == prefill_pos:
+                        item = result_list.topLevelItem(i)
+                        result_list.setCurrentItem(item)
+                        on_result_clicked(item, 0)
+                        self.update_status(f"已在{result_list.topLevelItemCount()}个匹配中定位到框选的位置")
+                        break
 
         dialog.show()  
 
@@ -1967,10 +2031,10 @@ class BinaryEditorQt(QMainWindow):
 
                 result_layout = QVBoxLayout(result_dialog)
 
-                info_text = f"地址范围: 0x{start_addr:08X} - 0x{end_addr:08X}\n"
-                info_text += f"字节数量: {len(byte_range)} (0x{len(byte_range):X})\n"
-                info_text += f"导出格式: {format_type}\n"
-                info_text += f"输出字符数: {len(result)}\n"
+                info_text = f"地址范围:0x{start_addr:08X} - 0x{end_addr:08X}\n"
+                info_text += f"字节数量:{len(byte_range)} (0x{len(byte_range):X})\n"
+                info_text += f"导出格式:{format_type}\n"
+                info_text += f"输出字符数:{len(result)}\n"
                 info_text += "-" * 60
 
                 info_label = QLabel(info_text)
@@ -2079,14 +2143,7 @@ class BinaryEditorQt(QMainWindow):
             if not text:
                 output_text.setPlainText("")
                 return
-
-            cleaned = re.sub(r'[\n\r\t]', '', text)
-            cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-            cleaned = re.sub(r'\.\.', '\n', cleaned)
-            cleaned = re.sub(r'\.', '', cleaned)
-            cleaned = re.sub('\n', '.', cleaned)
-
-            output_text.setPlainText(cleaned)
+            output_text.setPlainText(self.convert_utf16_exe_text(text, force=True))
 
         def copy_result():
             result = output_text.toPlainText()
@@ -2118,10 +2175,9 @@ class BinaryEditorQt(QMainWindow):
             self,
             "关于",
             f"<h3>{APP_NAME}</h3>"
-            f"<p>版本: {APP_VERSION}</p>"
-            f"<p>基于 PySide6 和 pyhexedit 构建的十六进制编辑器</p>"
-            f"<p>支持 ANSI、UTF-16LE、UTF-16BE 字符串扫描</p>"
-            f"<p>专为软件汉化设计</p>"
+            f"<p>版本:{APP_VERSION}</p>"
+            f"<p>基于PySide6和pyhexedit构建的十六进制编辑器</p>"
+            f"<p>支持ANSI、UTF-16LE、UTF-16BE字符串扫描</p>"
         )
 
     def update_status(self, message):
